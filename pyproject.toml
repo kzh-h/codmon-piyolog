@@ -1,0 +1,85 @@
+[project]
+name = "codmon-piyolog"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "playwright>=1.63.0",
+    "python-dotenv>=1.2.3",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "pre-commit>=4.3",
+    "detect-secrets>=1.5",
+    "types-requests>=2.33.0.20260906",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.ruff]
+line-length = 79
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "C4",
+    "ARG",
+    "PTH",
+    "RUF",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.13"
+
+strict = true
+
+warn_return_any = true
+warn_unused_configs = true
+
+disallow_untyped_defs = true
+disallow_any_generics = true
+
+check_untyped_defs = true
+
+no_implicit_optional = true
+
+pretty = true
+show_error_codes = true
+
+exclude = [
+    "^.venv/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "playwright.*",
+    "dotenv",
+    "requests",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+addopts = [
+    "-ra",
+    "--strict-markers",
+]

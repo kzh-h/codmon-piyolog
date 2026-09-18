@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: uvw/setup/setup@v2
+        with:
+          python-version: "3.13"
+          uv-cache-dir: ${{ runner.temp }}/uv_cache
+      - run: uv sync --locked
+      - run: uv run ruff format . --check
+      - run: uv run ruff check .
+      - run: uv run mypy .
+      - run: uv run pytest

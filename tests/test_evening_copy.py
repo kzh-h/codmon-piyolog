@@ -1,0 +1,59 @@
+# tests/test_evening_copy.py
+
+import pytest
+
+from src.codmon import MealData
+from src.evening_copy import (
+    copy_evening_to_tomorrow,
+)
+from tests.fakes import FakeCodmon
+
+
+@pytest.mark.asyncio
+async def test_copy_to_empty() -> None:
+
+    codmon = FakeCodmon(
+        [
+            MealData("ビビンバ", ""),
+            MealData("", ""),
+        ]
+    )
+
+    result = await copy_evening_to_tomorrow(codmon)
+
+    assert result is True
+    assert codmon.days[1].evening == "ビビンバ"
+    assert codmon.saved is True
+
+
+@pytest.mark.asyncio
+async def test_skip_if_exists() -> None:
+
+    codmon = FakeCodmon(
+        [
+            MealData("ビビンバ", ""),
+            MealData("カレー", ""),
+        ]
+    )
+
+    result = await copy_evening_to_tomorrow(codmon)
+
+    assert result is False
+    assert codmon.days[1].evening == "カレー"
+    assert codmon.saved is False
+
+
+@pytest.mark.asyncio
+async def test_skip_if_today_empty() -> None:
+
+    codmon = FakeCodmon(
+        [
+            MealData("", ""),
+            MealData("", ""),
+        ]
+    )
+
+    result = await copy_evening_to_tomorrow(codmon)
+
+    assert result is False
+    assert codmon.saved is False
