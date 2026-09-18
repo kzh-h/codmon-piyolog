@@ -1,6 +1,18 @@
 # tests/fakes.py
 
+from datetime import date
+
 from src.codmon import MealData
+from src.gas_api import MealRecord
+
+
+class FakeGasClient:
+    def __init__(self, records: dict[tuple[str, str], MealRecord | None]):
+        self.records = records
+
+    def get_meal(self, target_date: date, meal_type: str) -> MealRecord | None:
+        key = (target_date.strftime("%Y/%m/%d"), meal_type)
+        return self.records.get(key)
 
 
 class FakeCodmon:

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 from src.codmon import CodmonClient
+from src.gas_api import get_gas_client
 from src.meal_copy import find_latest_evening_meal, find_latest_morning_meal
 from src.piyolog import PiyologClient
 
@@ -22,6 +23,8 @@ async def main() -> None:
     piyolog = PiyologClient(feed_url)
     data = piyolog.parse()
 
+    gas_client = get_gas_client()
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context()
@@ -33,16 +36,17 @@ async def main() -> None:
         meals = await codmon.get_meals()
 
         if not meals.evening.strip():
-            evening_meal = await find_latest_evening_meal(codmon)
+            evening_meal = await find_latest_evening_meal(
+                gas_client=gas_client
+            )
             if evening_meal:
                 await codmon.set_evening_meal(evening_meal)
 
         if not meals.morning.strip():
-            morning_meal = await find_latest_morning_meal(codmon)
+            morning_meal = await find_latest_morning_meal(
+                gas_client=gas_client
+            )
             if morning_meal:
-                # Return to current day after searching previous days
-                for _ in range(codmon._get_days_traversed()):
-                    await codmon.move_next_day()
                 await codmon.set_morning_meal(morning_meal)
 
         await codmon.fill_morning_form(data)

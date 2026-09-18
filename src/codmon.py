@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from playwright.async_api import Locator as PlaywrightLocator
 from playwright.async_api import Page
 
 from src.models import CodmonData
@@ -49,7 +50,6 @@ class CodmonClient:
         self.password = password
         self.headless = headless
         self._logged_in = False
-        self._days_traversed = 0
 
     async def login(self) -> None:
         await self.page.goto("https://parents.codmon.com/home")
@@ -99,17 +99,12 @@ class CodmonClient:
         await self.page.get_by_test_id("movePrevDay").click()
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
-        self._days_traversed += 1
 
     async def move_next_day(self) -> None:
         self._ensure_logged_in()
         await self.page.get_by_test_id("moveNextDay").click()
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
-        self._days_traversed -= 1
-
-    def _get_days_traversed(self) -> int:
-        return self._days_traversed
 
     async def get_meals(self) -> MealData:
         self._ensure_logged_in()
@@ -202,7 +197,7 @@ class CodmonClient:
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
 
-    def _get_meal_section(self) -> Page:
+    def _get_meal_section(self) -> PlaywrightLocator:
         return self.page.locator("section.block__white--padding").filter(
             has=self.page.locator(Locators.MEAL_ICON)
         )
