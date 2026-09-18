@@ -5,11 +5,11 @@
 ## システム構成
 
 ```text
-GitHub Actions
+GitHub Actions (月〜金 07:30 JST)
     ↓
 Python
     ↓
-ぴよログ Feed
+ぴよログ Feed / GAS API (前日の夕食)
     ↓
 データ変換
     ↓
@@ -17,20 +17,15 @@ Playwright
     ↓
 コドモンWeb
     ↓
-下書き保存
+下書き保存（朝の連絡帳 + 前日の夕食）
 ```
 
 ## 実行スケジュール
 
-### 朝処理
+### 朝処理（月〜金 07:30 JST）
 
-- 月〜金 07:30 JST
-- 目的: 登園連絡の下書き作成
-
-### 夕方処理
-
-- 日〜木 17:30 JST
-- 目的: 翌日の夕食コピー
+- 登園連絡の下書き作成
+- 前日の夕食を取得して記録（夕食欄が空の場合）
 
 ## セットアップ
 
@@ -63,12 +58,6 @@ HEADLESS=false  # ローカルは true/false、本番は true
 
 ```bash
 HEADLESS=false uv run python -m src.main_morning
-```
-
-### 夕方処理（日〜木 17:30 JST）
-
-```bash
-HEADLESS=false uv run python -m src.main_evening
 ```
 
 ## ブラウザモード

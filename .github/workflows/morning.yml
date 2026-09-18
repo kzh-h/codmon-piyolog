@@ -1,0 +1,38 @@
+name: Morning Processing
+
+on:
+  schedule:
+    - cron: '30 22 * * 0-4'
+  workflow_dispatch:
+
+jobs:
+  morning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Install Playwright Chromium
+        run: uv run playwright install chromium
+
+      - name: Run morning processing
+        env:
+          CODMON_EMAIL: ${{ secrets.CODMON_EMAIL }}
+          CODMON_PASSWORD: ${{ secrets.CODMON_PASSWORD }}
+          PIYOLOG_FEED_URL: ${{ secrets.PIYOLOG_FEED_URL }}
+          HEADLESS: 'true'
+        run: uv run python -m src.main_morning
