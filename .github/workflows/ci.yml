@@ -23,4 +23,9 @@ jobs:
       - run: uv run ruff format . --check
       - run: uv run ruff check .
       - run: uv run mypy src
-      - run: uv run pytest
+      - run: uv run python -m pytest tests --ignore=tests/e2e/
+      - run: uv run python -m pytest tests/e2e
+        env:
+          CODMON_EMAIL: ${{ secrets.CODMON_EMAIL }}
+          CODMON_PASSWORD: ${{ secrets.CODMON_PASSWORD }}
+          PIYOLOG_FEED_URL: ${{ secrets.PIYOLOG_FEED_URL }}
