@@ -82,6 +82,20 @@ class CodmonClient:
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
 
+        # Retry login up to 3 times if still on login page
+        max_retries = 3
+        for attempt in range(max_retries):
+            login_button = self.page.get_by_text("ログインする")
+            if await login_button.count() == 0:
+                break
+            if attempt < max_retries - 1:
+                await self.page.wait_for_timeout(3000)
+                await login_button.click()
+                await self.page.wait_for_load_state("networkidle")
+                await self.page.wait_for_timeout(1000)
+        else:
+            raise RuntimeError("Login failed after 3 retries")
+
         # Wait 2 seconds for page transition, then click contact button
         await self.page.wait_for_timeout(2000)
         await self.page.get_by_role("button", name="連絡").click()
