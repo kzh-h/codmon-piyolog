@@ -89,4 +89,6 @@ class PiyologClient:
             sleep_end=sleep_end,
             temperature=temperature,
             temperature_time=temperature_time,
+            mood_evening="普通",
+            mood_morning="普通",
         )

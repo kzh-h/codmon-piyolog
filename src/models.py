@@ -11,3 +11,6 @@ class CodmonData:
 
     temperature: str | None
     temperature_time: str | None
+
+    mood_evening: str | None
+    mood_morning: str | None

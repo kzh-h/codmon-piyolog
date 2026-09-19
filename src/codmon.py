@@ -143,18 +143,30 @@ class CodmonClient:
     async def fill_morning_form(self, data: CodmonData) -> None:
         self._ensure_logged_in()
 
-        await self._fill_mood()
+        await self._fill_mood(data)
         await self._fill_poop(data)
         await self._fill_sleep(data)
         await self._fill_temperature(data)
 
-    async def _fill_mood(self) -> None:
+    async def _fill_mood(self, _data: CodmonData) -> None:
         mood_section = self.page.locator("section").filter(
             has=self.page.locator(Locators.MOOD_ICON)
         )
-        mood_icons = mood_section.locator(".icon-mood")
-        if await mood_icons.count() > 0:
-            await mood_icons.nth(0).click()
+
+        # Night mood: "夜のごきげんはいかがでしたか?"
+        night_normal = mood_section.locator(
+            ".emoticon-radio-wrapper .icon-mood-normal"
+        ).first
+        if await night_normal.count() > 0:
+            await night_normal.click()
+            await self.page.wait_for_timeout(1000)
+
+        # Morning mood: "朝のごきげんはいかがでしたか?"
+        morning_normal = mood_section.locator(
+            ".emoticon-radio-wrapper .icon-mood-normal"
+        ).nth(1)
+        if await morning_normal.count() > 0:
+            await morning_normal.click()
             await self.page.wait_for_timeout(1000)
 
     async def _fill_poop(self, data: CodmonData) -> None:
