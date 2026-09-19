@@ -53,6 +53,10 @@ def test_sleep_only() -> None:
                 "datetime": "2026-09-15T12:00:00.000Z",
                 "type": "Sleep",
             },
+            {
+                "datetime": "2026-09-15T21:30:00.000Z",
+                "type": "WakeUp",
+            },
         ]
     }
 
@@ -62,7 +66,7 @@ def test_sleep_only() -> None:
 
     assert result.sleep_start == "21:00"
 
-    assert result.sleep_end is None
+    assert result.sleep_end == "6:30"
 
 
 def test_no_temperature() -> None:
