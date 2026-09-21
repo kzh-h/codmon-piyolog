@@ -2,7 +2,9 @@
 
 import asyncio
 import os
+from datetime import date
 
+import requests
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
@@ -13,8 +15,24 @@ from src.piyolog import PiyologClient
 
 load_dotenv()
 
+HOLIDAY_API_URL = "https://holidays-jp.github.io/api/v1/date.json"
+
+
+def is_holiday() -> bool:
+    today = date.today().isoformat()
+    try:
+        response = requests.get(HOLIDAY_API_URL, timeout=10)
+        response.raise_for_status()
+        holidays = response.json()
+        return today in holidays
+    except Exception:
+        return False
+
 
 async def main() -> None:
+    if is_holiday():
+        return
+
     email = os.environ["CODMON_EMAIL"]
     password = os.environ["CODMON_PASSWORD"]
     feed_url = os.environ["PIYOLOG_FEED_URL"]

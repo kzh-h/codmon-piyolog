@@ -41,15 +41,16 @@ class CodmonClient:
     def __init__(
         self,
         page: Page,
-        email: str,
-        password: str,
+        email: str = "",
+        password: str = "",
         headless: bool = False,
+        pre_authenticated: bool = False,
     ):
         self.page = page
         self.email = email
         self.password = password
         self.headless = headless
-        self._logged_in = False
+        self._logged_in = pre_authenticated
 
     async def login(self) -> None:
         await self.page.goto("https://parents.codmon.com/home")
@@ -61,6 +62,12 @@ class CodmonClient:
             await reload_button.click()
             await self.page.wait_for_load_state("networkidle")
             await self.page.wait_for_timeout(1000)
+
+        # Check if already logged in (contact button "連絡" is visible)
+        contact_button = self.page.get_by_role("button", name="連絡")
+        if await contact_button.count() > 0:
+            self._logged_in = True
+            return
 
         already_have_account = self.page.get_by_text(
             "すでにアカウントをお持ちの方"

@@ -1,100 +1,50 @@
 # tests/e2e/test_navigation_and_draft.py
 
-import os
-
 import pytest
-from playwright.async_api import async_playwright
+from playwright.async_api import Page
 
 from src.codmon import CodmonClient
 
 
 @pytest.mark.asyncio
-async def test_move_prev_day() -> None:
-    email = os.environ.get("CODMON_EMAIL")
-    password = os.environ.get("CODMON_PASSWORD")
+async def test_move_prev_day(page: Page) -> None:
+    codmon = CodmonClient(page, "", "", False, pre_authenticated=True)
 
-    if not email or not password:
-        pytest.skip("CODMON_EMAIL and CODMON_PASSWORD required for E2E test")
+    meals_before = await codmon.get_meals()
 
-    headless = os.environ.get("HEADLESS", "true").lower() == "true"
+    await codmon.move_prev_day()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context()
-        page = await context.new_page()
+    meals_after = await codmon.get_meals()
 
-        codmon = CodmonClient(page, email, password, headless)
-        await codmon.login()
-
-        meals_before = await codmon.get_meals()
-
-        await codmon.move_prev_day()
-
-        meals_after = await codmon.get_meals()
-
-        assert (
-            meals_before.evening != meals_after.evening
-            or meals_before.morning != meals_after.morning
-        )
-
-        await browser.close()
+    assert (
+        meals_before.evening != meals_after.evening
+        or meals_before.morning != meals_after.morning
+    )
 
 
 @pytest.mark.asyncio
-async def test_move_next_day() -> None:
-    email = os.environ.get("CODMON_EMAIL")
-    password = os.environ.get("CODMON_PASSWORD")
+async def test_move_next_day(page: Page) -> None:
+    codmon = CodmonClient(page, "", "", False, pre_authenticated=True)
 
-    if not email or not password:
-        pytest.skip("CODMON_EMAIL and CODMON_PASSWORD required for E2E test")
+    meals_before = await codmon.get_meals()
 
-    headless = os.environ.get("HEADLESS", "true").lower() == "true"
+    await codmon.move_next_day()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context()
-        page = await context.new_page()
+    meals_after = await codmon.get_meals()
 
-        codmon = CodmonClient(page, email, password, headless)
-        await codmon.login()
-
-        meals_before = await codmon.get_meals()
-
-        await codmon.move_next_day()
-
-        meals_after = await codmon.get_meals()
-
-        assert (
-            meals_before.evening != meals_after.evening
-            or meals_before.morning != meals_after.morning
-        )
-
-        await browser.close()
+    assert (
+        meals_before.evening != meals_after.evening
+        or meals_before.morning != meals_after.morning
+    )
 
 
 @pytest.mark.asyncio
-async def test_save_draft() -> None:
-    email = os.environ.get("CODMON_EMAIL")
-    password = os.environ.get("CODMON_PASSWORD")
+async def test_save_draft(page: Page) -> None:
+    codmon = CodmonClient(page, "", "", False, pre_authenticated=True)
 
-    if not email or not password:
-        pytest.skip("CODMON_EMAIL and CODMON_PASSWORD required for E2E test")
+    meals_before = await codmon.get_meals()
 
-    headless = os.environ.get("HEADLESS", "true").lower() == "true"
+    if not meals_before.evening.strip():
+        await codmon.set_evening_meal("テスト夕食")
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        codmon = CodmonClient(page, email, password, headless)
-        await codmon.login()
-
-        meals_before = await codmon.get_meals()
-
-        if not meals_before.evening.strip():
-            await codmon.set_evening_meal("テスト夕食")
-
-        await codmon.save_draft()
-
-        await browser.close()
+    await codmon.save_draft()

@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from playwright.async_api import async_playwright
+from playwright.async_api import Page
 
 from src.codmon import CodmonClient
 from src.models import CodmonData
@@ -11,45 +11,22 @@ from src.piyolog import PiyologClient
 
 
 @pytest.mark.asyncio
-async def test_fill_morning_form() -> None:
-    email = os.environ.get("CODMON_EMAIL")
-    password = os.environ.get("CODMON_PASSWORD")
+async def test_fill_morning_form(page: Page) -> None:
     feed_url = os.environ.get("PIYOLOG_FEED_URL")
 
-    if not email or not password or not feed_url:
-        pytest.skip(
-            "CODMON_EMAIL, CODMON_PASSWORD, PIYOLOG_FEED_URL "
-            "required for E2E test"
-        )
-
-    headless = os.environ.get("HEADLESS", "true").lower() == "true"
+    if not feed_url:
+        pytest.skip("PIYOLOG_FEED_URL required for E2E test")
 
     piyolog = PiyologClient(feed_url)
     data = piyolog.parse()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context()
-        page = await context.new_page()
+    codmon = CodmonClient(page, "", "", False, pre_authenticated=True)
 
-        codmon = CodmonClient(page, email, password, headless)
-        await codmon.login()
-
-        await codmon.fill_morning_form(data)
-
-        await browser.close()
+    await codmon.fill_morning_form(data)
 
 
 @pytest.mark.asyncio
-async def test_fill_morning_form_with_mock_data() -> None:
-    email = os.environ.get("CODMON_EMAIL")
-    password = os.environ.get("CODMON_PASSWORD")
-
-    if not email or not password:
-        pytest.skip("CODMON_EMAIL and CODMON_PASSWORD required for E2E test")
-
-    headless = os.environ.get("HEADLESS", "true").lower() == "true"
-
+async def test_fill_morning_form_with_mock_data(page: Page) -> None:
     data = CodmonData(
         poop_evening_count=2,
         poop_morning_count=1,
@@ -57,16 +34,10 @@ async def test_fill_morning_form_with_mock_data() -> None:
         sleep_end="6:30",
         temperature="36.8",
         temperature_time="7:15",
+        mood_evening="good",
+        mood_morning="good",
     )
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        context = await browser.new_context()
-        page = await context.new_page()
+    codmon = CodmonClient(page, "", "", False, pre_authenticated=True)
 
-        codmon = CodmonClient(page, email, password, headless)
-        await codmon.login()
-
-        await codmon.fill_morning_form(data)
-
-        await browser.close()
+    await codmon.fill_morning_form(data)
