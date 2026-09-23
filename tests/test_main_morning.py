@@ -1,5 +1,6 @@
 # tests/test_main_morning.py
 
+from datetime import date
 from unittest.mock import patch
 
 import pytest
@@ -15,8 +16,8 @@ def test_is_holiday_true(mock_get) -> None:
     }
     mock_get.return_value.raise_for_status.return_value = None
 
-    with patch("src.main_morning.date") as mock_date:
-        mock_date.today.return_value.isoformat.return_value = "2026-09-21"
+    with patch("src.main_morning.get_jst_date") as mock_get_jst_date:
+        mock_get_jst_date.return_value = date(2026, 9, 21)
         assert is_holiday() is True
 
 
@@ -28,8 +29,8 @@ def test_is_holiday_false(mock_get) -> None:
     }
     mock_get.return_value.raise_for_status.return_value = None
 
-    with patch("src.main_morning.date") as mock_date:
-        mock_date.today.return_value.isoformat.return_value = "2026-09-20"
+    with patch("src.main_morning.get_jst_date") as mock_get_jst_date:
+        mock_get_jst_date.return_value = date(2026, 9, 20)
         assert is_holiday() is False
 
 
@@ -37,8 +38,8 @@ def test_is_holiday_false(mock_get) -> None:
 def test_is_holiday_request_exception(mock_get) -> None:
     mock_get.side_effect = Exception("Network error")
 
-    with patch("src.main_morning.date") as mock_date:
-        mock_date.today.return_value.isoformat.return_value = "2026-09-21"
+    with patch("src.main_morning.get_jst_date") as mock_get_jst_date:
+        mock_get_jst_date.return_value = date(2026, 9, 21)
         assert is_holiday() is False
 
 
@@ -46,8 +47,8 @@ def test_is_holiday_request_exception(mock_get) -> None:
 def test_is_holiday_http_error(mock_get) -> None:
     mock_get.return_value.raise_for_status.side_effect = Exception("HTTP 500")
 
-    with patch("src.main_morning.date") as mock_date:
-        mock_date.today.return_value.isoformat.return_value = "2026-09-21"
+    with patch("src.main_morning.get_jst_date") as mock_get_jst_date:
+        mock_get_jst_date.return_value = date(2026, 9, 21)
         assert is_holiday() is False
 
 

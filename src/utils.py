@@ -1,7 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 JST = ZoneInfo("Asia/Tokyo")
+
+
+def get_jst_date() -> date:
+    return datetime.now(JST).date()
 
 
 def to_jst(dt_str: str) -> datetime:

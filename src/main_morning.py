@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-from datetime import date
 
 import requests
 from dotenv import load_dotenv
@@ -12,6 +11,7 @@ from src.codmon import CodmonClient
 from src.gas_api import get_gas_client
 from src.meal_copy import find_latest_evening_meal, find_latest_morning_meal
 from src.piyolog import PiyologClient
+from src.utils import get_jst_date
 
 load_dotenv()
 
@@ -19,7 +19,7 @@ HOLIDAY_API_URL = "https://holidays-jp.github.io/api/v1/date.json"
 
 
 def is_holiday() -> bool:
-    today = date.today().isoformat()
+    today = get_jst_date().isoformat()
     try:
         response = requests.get(HOLIDAY_API_URL, timeout=10)
         response.raise_for_status()

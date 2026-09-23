@@ -4,7 +4,7 @@ from typing import Any
 import requests
 
 from .models import CodmonData
-from .utils import round_to_15min, to_jst
+from .utils import get_jst_date, round_to_15min, to_jst
 
 
 class PiyologClient:
@@ -23,7 +23,7 @@ class PiyologClient:
         if morning_dates:
             return min(morning_dates)
         all_dates = [to_jst(r["datetime"]).date() for r in records]
-        return max(all_dates) if all_dates else date.today()
+        return max(all_dates) if all_dates else get_jst_date()
 
     def parse(self, feed: dict[str, Any] | None = None) -> CodmonData:
         if feed is None:
