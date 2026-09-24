@@ -72,6 +72,9 @@
       "grep *": "allow",
       "rg *": "allow",
       "find *": "allow",
+      "ls *": "allow",
+      "head *": "allow",
+      "echo *": "allow",
 
       "git commit *": "ask",
 
