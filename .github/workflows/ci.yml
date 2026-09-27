@@ -1,4 +1,3 @@
-```yaml
 name: CI
 
 on:
@@ -98,4 +97,3 @@ jobs:
             --project=codmon-piyologa-auto \
             --config=cloudbuild.yaml \
             .
-```
