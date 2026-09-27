@@ -3,12 +3,15 @@ name = "codmon-piyolog"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "playwright>=1.63.0",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
 ]
+
+[project.scripts]
+morning = "src.main_morning:main"
 
 [dependency-groups]
 dev = [
@@ -24,7 +27,7 @@ dev = [
 
 [tool.ruff]
 line-length = 79
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -46,7 +49,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 
 strict = true
 

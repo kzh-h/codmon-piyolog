@@ -76,6 +76,8 @@
       "head *": "allow",
       "echo *": "allow",
 
+      "docker *": "allow",
+
       "git commit *": "ask",
 
       "git push *": "deny",

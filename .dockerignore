@@ -1,0 +1,17 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.git
+.github
+tests
+.env
+.env.*
+*.md
+ref
+.vscode
+.opencode
+.pip
+.mypy_cache
