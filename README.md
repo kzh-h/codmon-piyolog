@@ -1,131 +1,170 @@
 # codmon-piyolog
 
-ぴよログのデータフィードから育児記録を取得し、コドモン保護者Web版の「連絡帳」へ自動入力して下書き保存する。
+ぴよログのデータフィードから育児記録を取得し、コドモン保護者Web版の「連絡帳」へ自動入力して下書き保存するツール。
 
-## システム構成
+## 概要
+
+毎朝（平日 07:30 JST）、以下の処理を自動で行います。
+
+1. **ぴよログ Feed**: 当日の育児記録を取得
+2. **GAS API**: スプレッドシートから前日の夕食データを取得
+3. **データ変換**: 連絡帳の形式にデータを整形
+4. **Playwright**: コドモン保護者Web版へログインし、連絡帳に入力して下書き保存
+
+本番環境はGCP（Cloud Run Jobs / Cloud Scheduler）上でコンテナとして稼働し、GitHub ActionsはCI/CD基盤として利用しています。
+
+---
+
+## アーキテクチャ
+
+### 1. 定期実行フロー（本番処理）
 
 ```text
-GitHub Actions (月〜金 07:30 JST)
-    ↓
-Python
-    ↓
-ぴよログ Feed / GAS API (前日の夕食)
-    ↓
-データ変換
-    ↓
-Playwright
-    ↓
-コドモンWeb
-    ↓
-下書き保存（朝の連絡帳 + 前日の夕食）
+Cloud Scheduler (平日 07:30 JST)
+    │
+    ▼
+Cloud Run Jobs (codmon-piyolog)
+    │  ├─ Secret Manager (認証情報の注入)
+    │  ├─ ぴよログ Feed (育児記録取得)
+    │  └─ GAS API (前日夕食データ取得)
+    ▼
+Playwright (Chromium)
+    ▼
+コドモンWeb（連絡帳の下書き保存）
 ```
 
-## 必要なもの
+### 2. CI/CD フロー
 
-- **Google Apps Script (GAS)**: ぴよログから夕食データを取得するためのAPIエンドポイントとして使用
-- **Google Spreadsheet**: 夕食データを一時保存するためのデータストアとして使用
+```text
+Git Push / PR
+    │
+    ▼
+GitHub Actions
+    │  ├─ Ruff (format / lint)
+    │  ├─ mypy
+    │  └─ pytest (ユニットテストのみ)
+    │
+    ▼ main push かつ 対象ファイル変更時のみ
+Workload Identity Federation (GCP認証)
+    │
+    ▼
+Cloud Build (Docker build & push)
+    │
+    ▼
+Artifact Registry ──> Cloud Run Jobs を更新
+```
 
-### GAS / スプレッドシート セットアップ
+> **Note: GCPへ実行基盤を移行した背景**  
+> 当初はGitHub Actionsの定期実行（cron）を利用していましたが、**実行開始に大きなタイムラグ（遅延）が発生し、決まった時間に提出が必要な連絡帳の自動化として実用性に欠けたため**、正確な時刻に起動できるCloud Schedulerへ移行しました。  
+> 併せて、Playwright (Chromium) を含むコンテナ実行環境の確保や、機密情報（Codmon認証情報、GAS等のSecret）をCI/CD基盤から分離する目的で、「Cloud Scheduler + Cloud Run Jobs + Secret Manager」の構成を採用しています。
 
-1. **Google Spreadsheet を作成**
-   - 新しいスプレッドシートを作成
-   - 1行目にヘッダーを設定: 日付、朝夕食、メニューを最低限用意
+---
 
-2. **GAS プロジェクトを作成**
-   - スプレッドシートから「拡張機能」→「Apps Script」でスクリプトエディタを開きコードを作成
+## GCP構成・インフラ
 
-3. **GAS を Web アプリとしてデプロイ**
-   - 「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
-   - 実行ユーザー: 自分
-   - アクセスできるユーザー: 全員（または自分のみ）
-   - デプロイ後、URL と API キーを取得
+- **Project ID**: `codmon-piyologa-auto`
+- **Region**: `asia-northeast1`
 
-4. **環境変数に設定**
-   - `GAS_URL`: デプロイされたウェブアプリのURL
-   - `GAS_KEY`: GAS側で設定したAPIキー
+| サービス | 用途 / 設定 |
+|---|---|
+| **Cloud Run Jobs** | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 1 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
+| **Cloud Scheduler** | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `30 7 * * 1-5` (JST) |
+| **Cloud Build** | Dockerビルド & Jobデプロイ（`cloudbuild.yaml`） |
+| **Artifact Registry** | コンテナイメージ保存（`codmon-piyolog`） |
+| **Secret Manager** | 実行時環境変数の管理 |
+| **Workload Identity Federation** | GitHub ActionsからGCPへのキーレス認証 |
 
-## 実行スケジュール
+### サービスアカウント
 
-### 朝処理（月〜金 07:30 JST）
+- **Cloud Run 実行用**: `797724598266-compute@developer.gserviceaccount.com`（Secret参照権限）
+- **Cloud Scheduler 用**: `codmon-piyolog-scheduler@codmon-piyologa-auto.iam.gserviceaccount.com`（Run起動権限）
+- **GitHub Actions / Deploy用**: `codmon-piyolog-deployer@codmon-piyologa-auto.iam.gserviceaccount.com`（Cloud Build実行権限）
 
-- 登園連絡の下書き作成
-- 前日の夕食を取得して記録（夕食欄が空の場合）
+### Secret Managerで管理する環境変数
 
-## セットアップ
+- `codmon-email` / `codmon-password`
+- `piyolog-feed-url`
+- `gas-url` / `gas-key`
 
-1. 依存パッケージのインストール
+---
+
+## 外部連携セットアップ (GAS / スプレッドシート)
+
+前日の夕食データを取得するためのエンドポイントとしてGASを利用します。
+
+1. **Googleスプレッドシート作成**: 1行目に「日付」「朝夕食」「メニュー」を定義
+2. **Apps Script作成**: スプレッドシートの「拡張機能」→「Apps Script」からAPIスクリプトを実装
+3. **Webアプリとしてデプロイ**:
+   - 種類: `ウェブアプリ`
+   - 実行ユーザー: `自分`
+   - アクセスできるユーザー: `全員`（APIキーで保護）
+4. 発行された **URL** と **APIキー** を控えておく（ローカルは`.env`、本番はSecret Managerに登録）
+
+---
+
+## ローカル開発セットアップ
+
+### 1. 環境構築
 
 ```bash
+# 依存関係のインストール
 uv sync
-```
 
-2. ブラウザのインストール
-
-```bash
+# Playwright用ブラウザのインストール
 uv run playwright install chromium
 ```
 
-3. 環境変数の設定
+### 2. 環境変数設定
 
-`.env` ファイルを作成（`.env.sample` をコピー推奨）
+`.env.sample` をコピーして `.env` を作成し、値を設定します。
 
 ```env
-CODMON_EMAIL=xx@xxx.com
-CODMON_PASSWORD=xxx
-PIYOLOG_FEED_URL=https://feed.piyolog.com/v1/feed/24h/fdxx/xx
-GAS_URL=https://script.google.com/macros/s/xx/exec
-GAS_KEY=xxxx
-HEADLESS=false  # ローカルは true/false、本番は true
+CODMON_EMAIL=your-email@example.com
+CODMON_PASSWORD=your-password
+PIYOLOG_FEED_URL=https://feed.piyolog.com/v1/feed/...
+GAS_URL=https://script.google.com/macros/s/.../exec
+GAS_KEY=your-gas-key
+HEADLESS=false
 ```
 
-## ローカル実行方法
-
-### 朝処理（月〜金 07:30 JST）
+### 3. 実行方法
 
 ```bash
+# 朝の連絡帳入力処理を実行 (ブラウザ画面を表示して実行)
 HEADLESS=false uv run python -m src.main_morning
 ```
 
-## ブラウザモード
+- `HEADLESS=false`: ブラウザを表示（ローカルデバッグ向け）
+- `HEADLESS=true`: ヘッドレス実行（CI / 本番環境向け）
 
-- `HEADLESS=false`: ブラウザ表示（ローカル開発・デバッグ用）
-- `HEADLESS=true`: headless mode（GitHub Actions等のCI用、デフォルト）
-
-## GitHub Actions セットアップ
-
-1. ワークフローファイルをプッシュ
+### 4. テスト
 
 ```bash
-git add .github/workflows/
-git commit -m "Add GitHub Actions scheduled workflow"
-git push
-```
-
-2. GitHub Secrets を設定
-
-リポジトリ → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-
-以下の5つを追加:
-| Name | Value |
-|------|-------|
-| `CODMON_EMAIL` | Codmonログインメール |
-| `CODMON_PASSWORD` | Codmonパスワード |
-| `PIYOLOG_FEED_URL` | ぴよログフィードURL |
-| `GAS_URL` | GAS Web App URL |
-| `GAS_KEY` | GAS APIキー |
-
-3. 確認
-
-**Actions** タブで "Morning Processing" が表示され、スケジュール実行または手動実行可能
-
-## ユニットテスト
-
-```bash
+# ユニットテスト (CIで実行されるものと同等)
 uv run pytest tests/
-```
 
-## E2Eテスト（認証情報が必要）
-
-```bash
+# E2Eテスト (実際の認証情報が必要なためローカルのみで実行)
 CODMON_EMAIL=xxx CODMON_PASSWORD=xxx PIYOLOG_FEED_URL=xxx uv run pytest tests/e2e/ -v
 ```
+
+---
+
+## CI/CD (GitHub Actions)
+
+### トリガー仕様
+
+- **Pull Request / main push**:
+  - `ruff format --check`, `ruff check`, `mypy`, `pytest` を実行
+  - ※ **CIコスト削減（GitHub Actionsの実行時間削減）** のため、ブラウザ起動や外部通信を伴う重いE2Eテストは除外し、高速なユニットテストのみを自動実行しています。
+- **main push かつ デプロイ対象ファイルに変更がある場合**:
+  - Cloud Buildを起動し、コンテナイメージのビルドおよびCloud Run Jobsのデプロイを実行
+
+> **デプロイ対象**: `src/**`, `main.py`, `Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock`, `cloudbuild.yaml`  
+> （※ `README.md` や `tests/**` などの変更では再デプロイはスキップされます）
+
+---
+
+## セキュリティガイドライン
+
+- **認証情報のGitコミット厳禁**: パスワード、APIキー、Feed URL等の機密情報はリポジトリに含めないでください。
+- **キーレス認証**: GitHub ActionsからGCPへのアクセスには、永続的なサービスアカウントキーJSONは使わず、Workload Identity Federationを利用しています。
