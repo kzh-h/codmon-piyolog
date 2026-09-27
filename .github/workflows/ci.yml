@@ -48,3 +48,9 @@ jobs:
           service_account: 'codmon-piyolog-deployer@codmon-piyologa-auto.iam.gserviceaccount.com'
 
       - run: gcloud auth list
+
+      - name: Verify Cloud Build access
+        run: |
+          gcloud builds list \
+            --project=codmon-piyologa-auto \
+            --limit=1
