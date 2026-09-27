@@ -1,3 +1,4 @@
+```yaml
 name: CI
 
 on:
@@ -24,15 +25,59 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy src
       - run: uv run python -m pytest tests --ignore=tests/e2e/
-      # 個人用ツールのため、 E2EテストはGitHub Actionsでは実行しない
+      # 個人用ツールのため、E2EテストはGitHub Actionsでは実行しない
       # - run: uv run python -m pytest tests/e2e
       #   env:
       #     CODMON_EMAIL: ${{ secrets.CODMON_EMAIL }}
       #     CODMON_PASSWORD: ${{ secrets.CODMON_PASSWORD }}
       #     PIYOLOG_FEED_URL: ${{ secrets.PIYOLOG_FEED_URL }}
 
-  auth-test:
+  changes:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.filter.outputs.deploy }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-list --max-parents=0 "$AFTER_SHA")"
+          else
+            BASE_SHA="$BEFORE_SHA"
+          fi
+
+          echo "Comparing $BASE_SHA..$AFTER_SHA"
+
+          if git diff --quiet "$BASE_SHA" "$AFTER_SHA" -- \
+            'src/**' \
+            'main.py' \
+            'Dockerfile' \
+            '.dockerignore' \
+            'pyproject.toml' \
+            'uv.lock' \
+            'cloudbuild.yaml'
+          then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "No deploy-relevant changes."
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "Deploy-relevant changes detected."
+          fi
+
+  deploy:
+    needs: [check, changes]
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
 
     permissions:
@@ -47,10 +92,10 @@ jobs:
           workload_identity_provider: 'projects/797724598266/locations/global/workloadIdentityPools/github-actions/providers/github'  # pragma: allowlist secret
           service_account: 'codmon-piyolog-deployer@codmon-piyologa-auto.iam.gserviceaccount.com'
 
-      - run: gcloud auth list
-
-      - name: Verify Cloud Build access
+      - name: Deploy via Cloud Build
         run: |
-          gcloud builds list \
+          gcloud builds submit \
             --project=codmon-piyologa-auto \
-            --limit=1
+            --config=cloudbuild.yaml \
+            .
+```
