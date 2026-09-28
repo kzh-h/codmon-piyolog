@@ -91,6 +91,34 @@ jobs:
           workload_identity_provider: 'projects/797724598266/locations/global/workloadIdentityPools/github-actions/providers/github'  # pragma: allowlist secret
           service_account: 'codmon-piyolog-deployer@codmon-piyologa-auto.iam.gserviceaccount.com'
 
+      - name: Test Cloud Build bucket access
+        run: |
+          echo "=== Identity ==="
+          gcloud auth list
+
+          echo "=== Bucket ==="
+          gcloud storage buckets describe \
+            gs://codmon-piyologa-auto_cloudbuild
+
+          echo "=== List ==="
+          gcloud storage ls \
+            gs://codmon-piyologa-auto_cloudbuild/
+
+          echo "=== Write test ==="
+          echo "github-actions-test" > /tmp/test.txt
+
+          gcloud storage cp \
+            /tmp/test.txt \
+            gs://codmon-piyologa-auto_cloudbuild/github-actions-test.txt
+
+          echo "=== Read test ==="
+          gcloud storage cat \
+            gs://codmon-piyologa-auto_cloudbuild/github-actions-test.txt
+
+          echo "=== Delete test ==="
+          gcloud storage rm \
+            gs://codmon-piyologa-auto_cloudbuild/github-actions-test.txt
+
       - name: Deploy via Cloud Build
         run: |
           gcloud builds submit \
