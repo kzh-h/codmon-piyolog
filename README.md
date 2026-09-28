@@ -65,14 +65,16 @@ Artifact Registry ──> Cloud Run Jobs を更新
 - **Project ID**: `codmon-piyologa-auto`
 - **Region**: `asia-northeast1`
 
-| サービス | 用途 / 設定 |
-|---|---|
-| **Cloud Run Jobs** | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 1 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
-| **Cloud Scheduler** | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `30 7 * * 1-5` (JST) |
-| **Cloud Build** | Dockerビルド & Jobデプロイ（`cloudbuild.yaml`） |
-| **Artifact Registry** | コンテナイメージ保存（`codmon-piyolog`） |
-| **Secret Manager** | 実行時環境変数の管理 |
-| **Workload Identity Federation** | GitHub ActionsからGCPへのキーレス認証 |
+
+| サービス                             | 用途 / 設定                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| **Cloud Run Jobs**               | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 1 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
+| **Cloud Scheduler**              | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `30 7 * * 1-5` (JST)                          |
+| **Cloud Build**                  | Dockerビルド &amp; Jobデプロイ（`cloudbuild.yaml`）                                              |
+| **Artifact Registry**            | コンテナイメージ保存（`codmon-piyolog`）                                                            |
+| **Secret Manager**               | 実行時環境変数の管理                                                                              |
+| **Workload Identity Federation** | GitHub ActionsからGCPへのキーレス認証                                                             |
+
 
 ### サービスアカウント
 
@@ -159,7 +161,7 @@ CODMON_EMAIL=xxx CODMON_PASSWORD=xxx PIYOLOG_FEED_URL=xxx uv run pytest tests/e2
 - **main push かつ デプロイ対象ファイルに変更がある場合**:
   - Cloud Buildを起動し、コンテナイメージのビルドおよびCloud Run Jobsのデプロイを実行
 
-> **デプロイ対象**: `src/**`, `main.py`, `Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock`, `cloudbuild.yaml`  
+> **デプロイ対象**: `src/**`, `main.py`, `Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock`,  `.github/workflows/ci.yml`, `cloudbuild.yaml`  
 > （※ `README.md` や `tests/**` などの変更では再デプロイはスキップされます）
 
 ---
@@ -168,3 +170,4 @@ CODMON_EMAIL=xxx CODMON_PASSWORD=xxx PIYOLOG_FEED_URL=xxx uv run pytest tests/e2
 
 - **認証情報のGitコミット厳禁**: パスワード、APIキー、Feed URL等の機密情報はリポジトリに含めないでください。
 - **キーレス認証**: GitHub ActionsからGCPへのアクセスには、永続的なサービスアカウントキーJSONは使わず、Workload Identity Federationを利用しています。
+

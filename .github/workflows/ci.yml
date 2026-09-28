@@ -62,6 +62,7 @@ jobs:
             '.dockerignore' \
             'pyproject.toml' \
             'uv.lock' \
+            '.github/workflows/ci.yml' \
             'cloudbuild.yaml'
           then
             echo "deploy=false" >> "$GITHUB_OUTPUT"
