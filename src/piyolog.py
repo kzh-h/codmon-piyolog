@@ -14,23 +14,19 @@ class PiyologClient:
     def fetch(self) -> dict[str, Any]:
         return requests.get(self.feed_url, timeout=30).json()  # type: ignore[no-any-return]
 
-    def _determine_current_day(self, records: list[dict[str, Any]]) -> date:
-        morning_dates: list[date] = []
-        for record in records:
-            dt = to_jst(record["datetime"])
-            if record["type"] in ("WakeUp", "Temperature"):
-                morning_dates.append(dt.date())
-        if morning_dates:
-            return min(morning_dates)
-        all_dates = [to_jst(r["datetime"]).date() for r in records]
-        return max(all_dates) if all_dates else get_jst_date()
-
-    def parse(self, feed: dict[str, Any] | None = None) -> CodmonData:
+    def parse(
+        self,
+        feed: dict[str, Any] | None = None,
+        current_date: date | None = None,
+    ) -> CodmonData:
         if feed is None:
             feed = self.fetch()
 
+        if current_date is None:
+            current_date = get_jst_date()
+
         records = feed["records"]
-        current_day = self._determine_current_day(records)
+        current_day = current_date
         previous_day = current_day - timedelta(days=1)
 
         poop_evening = 0
@@ -78,7 +74,7 @@ class PiyologClient:
         temperature_time = None
 
         if latest_temp:
-            temperature = str(latest_temp["value"]["value"])
+            temperature = f"{latest_temp['value']['value']:.1f}"
             dt = to_jst(latest_temp["datetime"])
             temperature_time = round_to_15min(dt)
 
@@ -91,4 +87,5 @@ class PiyologClient:
             temperature_time=temperature_time,
             mood_evening="普通",
             mood_morning="普通",
+            data_date=current_day,
         )

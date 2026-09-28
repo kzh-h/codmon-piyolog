@@ -1,6 +1,7 @@
 # src/main_morning.py
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -17,8 +18,13 @@ from src.utils import get_jst_date
 
 load_dotenv()
 
+
+def is_gcp() -> bool:
+    return bool(os.environ.get("K_SERVICE"))
+
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if not is_gcp() else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
     force=True,
@@ -58,15 +64,26 @@ async def main() -> None:
 
     logger.info("Initializing Piyolog client...")
     piyolog = PiyologClient(feed_url)
-    data = piyolog.parse()
-    logger.info(f"Piyolog data parsed: {data}")
+    feed = piyolog.fetch()
+    logger.debug(f"Piyolog raw feed: {json.dumps(feed, ensure_ascii=False)}")
+    data = piyolog.parse(feed)
+    logger.info(
+        "Piyolog data parsed: "
+        f"date={data.data_date}, time={data.temperature_time}, {data}"
+    )
 
     logger.info("Initializing GAS client...")
     gas_client = get_gas_client()
 
     logger.info("Launching Playwright browser...")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        launch_args = []
+        if not headless:
+            launch_args = [
+                "--enable-features=UseOzonePlatform",
+                "--ozone-platform=wayland",
+            ]
+        browser = await p.chromium.launch(headless=headless, args=launch_args)
         context = await browser.new_context()
         page = await context.new_page()
         logger.info("Browser launched successfully")

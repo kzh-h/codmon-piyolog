@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass
@@ -14,3 +15,5 @@ class CodmonData:
 
     mood_evening: str | None
     mood_morning: str | None
+
+    data_date: date | None = None

@@ -1,3 +1,5 @@
+from datetime import date
+
 from src.piyolog import PiyologClient
 
 
@@ -30,7 +32,7 @@ def test_parse_feed() -> None:
 
     client = PiyologClient("dummy")
 
-    result = client.parse(feed)
+    result = client.parse(feed, current_date=date(2026, 9, 16))
 
     assert result.poop_evening_count == 1
 
@@ -62,7 +64,7 @@ def test_sleep_only() -> None:
 
     client = PiyologClient("dummy")
 
-    result = client.parse(feed)
+    result = client.parse(feed, current_date=date(2026, 9, 16))
 
     assert result.sleep_start == "21:00"
 
@@ -75,7 +77,7 @@ def test_no_temperature() -> None:
 
     client = PiyologClient("dummy")
 
-    result = client.parse(feed)
+    result = client.parse(feed, current_date=date(2026, 9, 16))
 
     assert result.temperature is None
 

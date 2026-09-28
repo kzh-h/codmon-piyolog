@@ -26,7 +26,7 @@ class GasApiClient:
             "date": target_date.strftime("%Y/%m/%d"),
             "morning_dinner": meal_type,
         }
-        response = requests.get(self.base_url, params=params, timeout=10)
+        response = requests.get(self.base_url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
 
