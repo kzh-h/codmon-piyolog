@@ -123,6 +123,7 @@ jobs:
       - name: Deploy via Cloud Build
         run: |
           gcloud builds submit \
+            --verbosity=debug \
             --project=codmon-piyologa-auto \
             --config=cloudbuild.yaml \
             .
