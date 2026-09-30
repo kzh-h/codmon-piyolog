@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    HEADLESS=true
+    HEADLESS=true \
+    PLAYWRIGHT_CHROMIUM_ARGS="--enable-features=UseOzonePlatform --ozone-platform=wayland --no-sandbox --disable-setuid-sandbox"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
