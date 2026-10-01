@@ -5,11 +5,11 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    HEADLESS=true \
-    PLAYWRIGHT_CHROMIUM_ARGS="--enable-features=UseOzonePlatform --ozone-platform=wayland --no-sandbox --disable-setuid-sandbox"
+    HEADLESS=true
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./

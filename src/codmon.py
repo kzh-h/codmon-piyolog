@@ -161,19 +161,37 @@ class CodmonClient:
         )
 
         # Night mood: "夜のごきげんはいかがでしたか?"
-        night_normal = mood_section.locator(
-            ".emoticon-radio-wrapper .icon-mood-normal"
-        ).first
-        if await night_normal.count() > 0:
-            await night_normal.click()
+        night_wrapper = (
+            mood_section.locator(".emoticon-radio-wrapper")
+            .filter(has=self.page.locator(".icon-mood-normal"))
+            .first
+        )
+        night_target = (
+            night_wrapper
+            if await night_wrapper.count() > 0
+            else mood_section.locator(
+                ".emoticon-radio-wrapper .icon-mood-normal"
+            ).first
+        )
+        if await night_target.count() > 0:
+            await self._scroll_and_click(night_target)
             await self.page.wait_for_timeout(1000)
 
         # Morning mood: "朝のごきげんはいかがでしたか?"
-        morning_normal = mood_section.locator(
-            ".emoticon-radio-wrapper .icon-mood-normal"
-        ).nth(1)
-        if await morning_normal.count() > 0:
-            await morning_normal.click()
+        morning_wrapper = (
+            mood_section.locator(".emoticon-radio-wrapper")
+            .filter(has=self.page.locator(".icon-mood-normal"))
+            .nth(1)
+        )
+        morning_target = (
+            morning_wrapper
+            if await morning_wrapper.count() > 0
+            else mood_section.locator(
+                ".emoticon-radio-wrapper .icon-mood-normal"
+            ).nth(1)
+        )
+        if await morning_target.count() > 0:
+            await self._scroll_and_click(morning_target)
             await self.page.wait_for_timeout(1000)
 
     async def _fill_poop(self, data: CodmonData) -> None:
@@ -224,9 +242,19 @@ class CodmonClient:
         await meal_section.locator(Locators.MEAL_TEXTAREA).nth(0).fill(value)
         await self.page.wait_for_timeout(1000)
 
+    async def _scroll_and_click(self, locator: PlaywrightLocator) -> None:
+        await locator.evaluate(
+            "el => el.scrollIntoView({ block: 'center', inline: 'center' })"
+        )
+        await locator.click(force=True)
+
     async def save_draft(self) -> None:
         self._ensure_logged_in()
-        await self.page.get_by_text("下書き保存").click()
+        draft_btn = self.page.get_by_text("下書き保存")
+        if await draft_btn.count() > 0:
+            await self._scroll_and_click(draft_btn)
+        else:
+            await draft_btn.click()
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
 

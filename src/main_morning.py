@@ -77,14 +77,22 @@ async def main() -> None:
 
     logger.info("Launching Playwright browser...")
     async with async_playwright() as p:
-        launch_args = []
+        launch_args = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
         if not headless:
-            launch_args = [
-                "--enable-features=UseOzonePlatform",
-                "--ozone-platform=wayland",
-            ]
+            launch_args.extend(
+                [
+                    "--enable-features=UseOzonePlatform",
+                    "--ozone-platform=wayland",
+                ]
+            )
         browser = await p.chromium.launch(headless=headless, args=launch_args)
-        context = await browser.new_context()
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 1080}
+        )
         page = await context.new_page()
         logger.info("Browser launched successfully")
 
