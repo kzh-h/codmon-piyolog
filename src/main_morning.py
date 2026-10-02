@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
@@ -12,6 +14,7 @@ from playwright.async_api import async_playwright
 
 from src.codmon import CodmonClient
 from src.gas_api import get_gas_client
+from src.gcs import upload_trace_to_gcs
 from src.meal_copy import find_latest_evening_meal, find_latest_morning_meal
 from src.piyolog import PiyologClient
 from src.utils import get_jst_date
@@ -95,64 +98,83 @@ async def main() -> None:
             )
         else:
             context = await browser.new_context()
-        page = await context.new_page()
-        logger.info("Browser launched successfully")
-
-        logger.info("Initializing Codmon client...")
-        codmon = CodmonClient(page, email, password, headless)
-
-        logger.info("Logging into Codmon...")
-        await codmon.login()
-        logger.info("Login successful")
-
-        logger.info("Fetching meals from Codmon...")
-        meals = await codmon.get_meals()
-        logger.info(
-            "Meals fetched: "
-            f"evening={'set' if meals.evening.strip() else 'empty'}, "
-            f"morning={'set' if meals.morning.strip() else 'empty'}"
+        await context.tracing.start(
+            screenshots=True,
+            snapshots=True,
+            sources=True,
         )
 
-        if not meals.evening.strip():
+        try:
+            page = await context.new_page()
+            logger.info("Browser launched successfully")
+
+            logger.info("Initializing Codmon client...")
+            codmon = CodmonClient(page, email, password, headless)
+
+            logger.info("Logging into Codmon...")
+            await codmon.login()
+            logger.info("Login successful")
+
+            logger.info("Fetching meals from Codmon...")
+            meals = await codmon.get_meals()
             logger.info(
-                "Evening meal is empty, searching for latest "
-                "evening meal from GAS..."
+                "Meals fetched: "
+                f"evening={'set' if meals.evening.strip() else 'empty'}, "
+                f"morning={'set' if meals.morning.strip() else 'empty'}"
             )
-            evening_meal = await find_latest_evening_meal(
-                gas_client=gas_client
-            )
-            if evening_meal:
-                logger.info(f"Found evening meal: {evening_meal[:50]}...")
-                await codmon.set_evening_meal(evening_meal)
-                logger.info("Evening meal set successfully")
-            else:
-                logger.info("No evening meal found in GAS")
 
-        if not meals.morning.strip():
-            logger.info(
-                "Morning meal is empty, searching for latest "
-                "morning meal from GAS..."
-            )
-            morning_meal = await find_latest_morning_meal(
-                gas_client=gas_client
-            )
-            if morning_meal:
-                logger.info(f"Found morning meal: {morning_meal[:50]}...")
-                await codmon.set_morning_meal(morning_meal)
-                logger.info("Morning meal set successfully")
-            else:
-                logger.info("No morning meal found in GAS")
+            if not meals.evening.strip():
+                logger.info(
+                    "Evening meal is empty, searching for latest "
+                    "evening meal from GAS..."
+                )
+                evening_meal = await find_latest_evening_meal(
+                    gas_client=gas_client
+                )
+                if evening_meal:
+                    logger.info(f"Found evening meal: {evening_meal[:50]}...")
+                    await codmon.set_evening_meal(evening_meal)
+                    logger.info("Evening meal set successfully")
+                else:
+                    logger.info("No evening meal found in GAS")
 
-        logger.info("Filling morning form with Piyolog data...")
-        await codmon.fill_morning_form(data)
-        logger.info("Morning form filled")
+            if not meals.morning.strip():
+                logger.info(
+                    "Morning meal is empty, searching for latest "
+                    "morning meal from GAS..."
+                )
+                morning_meal = await find_latest_morning_meal(
+                    gas_client=gas_client
+                )
+                if morning_meal:
+                    logger.info(f"Found morning meal: {morning_meal[:50]}...")
+                    await codmon.set_morning_meal(morning_meal)
+                    logger.info("Morning meal set successfully")
+                else:
+                    logger.info("No morning meal found in GAS")
 
-        logger.info("Saving draft...")
-        await codmon.save_draft()
-        logger.info("Draft saved successfully")
+            logger.info("Filling morning form with Piyolog data...")
+            await codmon.fill_morning_form(data)
+            logger.info("Morning form filled")
 
-        await browser.close()
-        logger.info("Browser closed")
+            logger.info("Saving draft...")
+            await codmon.save_draft()
+            logger.info("Draft saved successfully")
+
+            await context.tracing.stop()
+        except Exception as e:
+            logger.error(f"Error during execution: {e}", exc_info=True)
+            timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            trace_path = Path(f"/tmp/trace_{timestamp_str}.zip")
+            await context.tracing.stop(path=str(trace_path))
+            logger.info(f"Trace recorded to local file: {trace_path}")
+            gcs_uri = upload_trace_to_gcs(trace_path)
+            if gcs_uri:
+                logger.info(f"Playwright trace uploaded to GCS: {gcs_uri}")
+            raise
+        finally:
+            await browser.close()
+            logger.info("Browser closed")
 
     logger.info("=== Morning processing completed ===")
 

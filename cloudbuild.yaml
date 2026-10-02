@@ -25,10 +25,11 @@ steps:
       - '--set-secrets'
       - 'CODMON_EMAIL=codmon-email:latest,CODMON_PASSWORD=codmon-password:latest,PIYOLOG_FEED_URL=piyolog-feed-url:latest,GAS_URL=gas-url:latest,GAS_KEY=gas-key:latest'
       - '--set-env-vars'
-      - 'HEADLESS=true'
+      - 'HEADLESS=true,GCS_TRACE_BUCKET=${_TRACE_BUCKET}'
 
 options:
   logging: CLOUD_LOGGING_ONLY
 substitutions:
   _REGION: 'asia-northeast1'
   _REPOSITORY: 'codmon-piyolog'
+  _TRACE_BUCKET: 'codmon-piyolog-traces-codmon-piyologa-auto'
