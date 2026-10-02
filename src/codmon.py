@@ -161,37 +161,19 @@ class CodmonClient:
         )
 
         # Night mood: "夜のごきげんはいかがでしたか?"
-        night_wrapper = (
-            mood_section.locator(".emoticon-radio-wrapper")
-            .filter(has=self.page.locator(".icon-mood-normal"))
-            .first
-        )
-        night_target = (
-            night_wrapper
-            if await night_wrapper.count() > 0
-            else mood_section.locator(
-                ".emoticon-radio-wrapper .icon-mood-normal"
-            ).first
-        )
-        if await night_target.count() > 0:
-            await self._scroll_and_click(night_target)
+        night_normal = mood_section.locator(
+            ".emoticon-radio-wrapper .icon-mood-normal"
+        ).first
+        if await night_normal.count() > 0:
+            await self._scroll_and_click(night_normal)
             await self.page.wait_for_timeout(1000)
 
         # Morning mood: "朝のごきげんはいかがでしたか?"
-        morning_wrapper = (
-            mood_section.locator(".emoticon-radio-wrapper")
-            .filter(has=self.page.locator(".icon-mood-normal"))
-            .nth(1)
-        )
-        morning_target = (
-            morning_wrapper
-            if await morning_wrapper.count() > 0
-            else mood_section.locator(
-                ".emoticon-radio-wrapper .icon-mood-normal"
-            ).nth(1)
-        )
-        if await morning_target.count() > 0:
-            await self._scroll_and_click(morning_target)
+        morning_normal = mood_section.locator(
+            ".emoticon-radio-wrapper .icon-mood-normal"
+        ).nth(1)
+        if await morning_normal.count() > 0:
+            await self._scroll_and_click(morning_normal)
             await self.page.wait_for_timeout(1000)
 
     async def _fill_poop(self, data: CodmonData) -> None:
@@ -243,10 +225,37 @@ class CodmonClient:
         await self.page.wait_for_timeout(1000)
 
     async def _scroll_and_click(self, locator: PlaywrightLocator) -> None:
-        await locator.evaluate(
-            "el => el.scrollIntoView({ block: 'center', inline: 'center' })"
-        )
-        await locator.click(force=True)
+        js_click = """el => {
+            try {
+                el.scrollIntoView({ block: 'center', inline: 'center' });
+            } catch (_) {}
+            try {
+                el.click();
+            } catch (_) {}
+            try {
+                const wrapper = el.closest('.emoticon-radio-wrapper') || el;
+                if (wrapper !== el) {
+                    wrapper.click();
+                }
+                const input = wrapper.querySelector('input') ||
+                    el.querySelector('input');
+                if (input && !input.checked) {
+                    input.checked = true;
+                    input.dispatchEvent(
+                        new Event('change', { bubbles: true })
+                    );
+                    input.dispatchEvent(
+                        new Event('input', { bubbles: true })
+                    );
+                }
+            } catch (_) {}
+        }"""
+        await locator.evaluate(js_click)
+        try:
+            if await locator.is_visible():
+                await locator.click(force=True)
+        except Exception:
+            pass
 
     async def save_draft(self) -> None:
         self._ensure_logged_in()
