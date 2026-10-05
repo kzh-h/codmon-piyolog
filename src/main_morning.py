@@ -5,8 +5,10 @@ import json
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -23,7 +25,73 @@ load_dotenv()
 
 
 def is_gcp() -> bool:
-    return bool(os.environ.get("K_SERVICE"))
+    return bool(
+        os.environ.get("K_SERVICE")
+        or os.environ.get("CLOUD_RUN_JOB")
+        or os.environ.get("CLOUD_RUN_EXECUTION")
+        or os.environ.get("ENVIRONMENT", "").lower()
+        in ("gcp", "production", "prod")
+        or os.environ.get("GCP", "").lower() == "true"
+    )
+
+
+@dataclass
+class BrowserConfig:
+    headless: bool
+    launch_args: list[str]
+    context_options: dict[str, Any]
+    pattern_name: str
+
+
+def get_browser_config() -> BrowserConfig:
+    gcp = is_gcp()
+    headless_env = os.environ.get("HEADLESS", "false").lower() == "true"
+
+    if gcp:
+        # パターン3: デプロイ先GCPでのHEADLESS true
+        return BrowserConfig(
+            headless=True,
+            launch_args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+            context_options={"viewport": {"width": 1280, "height": 1080}},
+            pattern_name="gcp_headless",
+        )
+    elif headless_env:
+        # パターン2: ローカル開発でのHEADLESS true
+        return BrowserConfig(
+            headless=True,
+            launch_args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--headless=new",
+            ],
+            context_options={
+                "viewport": {"width": 1280, "height": 1080},
+                "user_agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+            pattern_name="local_headless",
+        )
+    else:
+        # パターン1: ローカル開発でのHEADLESS false
+        return BrowserConfig(
+            headless=False,
+            launch_args=[
+                "--enable-features=UseOzonePlatform",
+                "--ozone-platform=wayland",
+            ],
+            context_options={},
+            pattern_name="local_headed",
+        )
 
 
 logging.basicConfig(
@@ -62,8 +130,11 @@ async def main() -> None:
     email = os.environ["CODMON_EMAIL"]
     password = os.environ["CODMON_PASSWORD"]
     feed_url = os.environ["PIYOLOG_FEED_URL"]
-    headless = os.environ.get("HEADLESS", "false").lower() == "true"
-    logger.info(f"Environment loaded: headless={headless}")
+    browser_config = get_browser_config()
+    logger.info(
+        f"Execution pattern: {browser_config.pattern_name} "
+        f"(headless={browser_config.headless}, is_gcp={is_gcp()})"
+    )
 
     logger.info("Initializing Piyolog client...")
     piyolog = PiyologClient(feed_url)
@@ -78,26 +149,17 @@ async def main() -> None:
     logger.info("Initializing GAS client...")
     gas_client = get_gas_client()
 
-    logger.info("Launching Playwright browser...")
+    logger.info(
+        f"Launching Playwright browser "
+        f"(pattern={browser_config.pattern_name}, "
+        f"args={browser_config.launch_args})..."
+    )
     async with async_playwright() as p:
-        if headless:
-            launch_args = [
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ]
-        else:
-            launch_args = [
-                "--enable-features=UseOzonePlatform",
-                "--ozone-platform=wayland",
-            ]
-        browser = await p.chromium.launch(headless=headless, args=launch_args)
-        if headless:
-            context = await browser.new_context(
-                viewport={"width": 1280, "height": 1080}
-            )
-        else:
-            context = await browser.new_context()
+        browser = await p.chromium.launch(
+            headless=browser_config.headless,
+            args=browser_config.launch_args,
+        )
+        context = await browser.new_context(**browser_config.context_options)
         await context.tracing.start(
             screenshots=True,
             snapshots=True,
@@ -109,7 +171,9 @@ async def main() -> None:
             logger.info("Browser launched successfully")
 
             logger.info("Initializing Codmon client...")
-            codmon = CodmonClient(page, email, password, headless)
+            codmon = CodmonClient(
+                page, email, password, browser_config.headless
+            )
 
             logger.info("Logging into Codmon...")
             await codmon.login()
@@ -150,12 +214,21 @@ async def main() -> None:
                     logger.info(f"Found morning meal: {morning_meal[:50]}...")
                     await codmon.set_morning_meal(morning_meal)
                     logger.info("Morning meal set successfully")
+                    meals_after = await codmon.get_meals()
+                    logger.info(
+                        f"Morning meal after set: '{meals_after.morning}'"
+                    )
                 else:
                     logger.info("No morning meal found in GAS")
 
             logger.info("Filling morning form with Piyolog data...")
             await codmon.fill_morning_form(data)
             logger.info("Morning form filled")
+            meals_after_form = await codmon.get_meals()
+            logger.info(
+                f"Morning meal after fill_morning_form: "
+                f"'{meals_after_form.morning}'"
+            )
 
             logger.info("Saving draft...")
             await codmon.save_draft()

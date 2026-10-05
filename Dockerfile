@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    HEADLESS=true
+    HEADLESS=true \
+    ENVIRONMENT=gcp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

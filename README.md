@@ -131,13 +131,22 @@ HEADLESS=false
 
 ### 3. 実行方法
 
+実行環境およびブラウザ設定は以下の3パターンに対応しています。
+
 ```bash
-# 朝の連絡帳入力処理を実行 (ブラウザ画面を表示して実行)
+# パターン1: ローカル開発 (ブラウザ画面を表示して実行)
 HEADLESS=false uv run python -m src.main_morning
+
+# パターン2: ローカル開発 (ヘッドレスで実行・GCPと同じviewportで検証)
+HEADLESS=true uv run python -m src.main_morning
+
+# パターン3: GCP本番環境 (Cloud Run Jobs / Dockerコンテナ内で自動実行)
+# ※ K_SERVICE, CLOUD_RUN_JOB, または ENVIRONMENT=gcp を検知してコンテナ用引数(--no-sandbox等)で動作
 ```
 
-- `HEADLESS=false`: ブラウザを表示（ローカルデバッグ向け）
-- `HEADLESS=true`: ヘッドレス実行（CI / 本番環境向け）
+- **ローカル (HEADLESS=false)**: Wayland環境向け引数でブラウザGUIを表示して実行
+- **ローカル (HEADLESS=true)**: ヘッドレスで実行（GCPと同じ1280x1080解像度で動作確認・原因切り分けが可能）
+- **GCP本番 (HEADLESS=true)**: Cloud Run Jobs / コンテナ向け引数（`--no-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`）および1280x1080解像度で実行
 
 ### 4. テスト
 
