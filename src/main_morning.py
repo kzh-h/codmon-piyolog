@@ -235,7 +235,13 @@ async def main() -> None:
             await codmon.save_draft()
             logger.info("Draft saved successfully")
 
-            await context.tracing.stop()
+            timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            trace_path = Path(f"/tmp/trace_{timestamp_str}.zip")
+            await context.tracing.stop(path=str(trace_path))
+            logger.info(f"Trace recorded to local file: {trace_path}")
+            gcs_uri = upload_trace_to_gcs(trace_path)
+            if gcs_uri:
+                logger.info(f"Playwright trace uploaded to GCS: {gcs_uri}")
         except Exception as e:
             logger.error(f"Error during execution: {e}", exc_info=True)
             timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
