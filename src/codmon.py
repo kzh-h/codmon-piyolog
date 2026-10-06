@@ -1,11 +1,14 @@
 # src/codmon.py
 
+import logging
 from dataclasses import dataclass
 
 from playwright.async_api import Locator as PlaywrightLocator
 from playwright.async_api import Page
 
 from src.models import CodmonData
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -182,6 +185,14 @@ class CodmonClient:
         )
         selects = poop_section.locator(Locators.SELECT)
 
+        # Check if the first select is visible and enabled (form is editable)
+        first_select = selects.nth(0)
+        is_visible = await first_select.is_visible()
+        is_enabled = await first_select.is_enabled()
+        if not is_visible or not is_enabled:
+            logger.info("Poop section not editable, skipping")
+            return
+
         await selects.nth(0).select_option("普通")
         await self.page.wait_for_timeout(1000)
         await selects.nth(1).select_option(str(data.poop_evening_count))
@@ -197,11 +208,21 @@ class CodmonClient:
         ).filter(has=self.page.locator(Locators.SLEEP_ICON))
         selects = sleep_section.locator(Locators.SELECT)
 
+        # Check if the first select is visible and enabled (form is editable)
+        first_select = selects.nth(0)
+        is_visible = await first_select.is_visible()
+        is_enabled = await first_select.is_enabled()
+        if not is_visible or not is_enabled:
+            logger.info("Sleep section not editable, skipping")
+            return
+
         if data.sleep_start:
-            await selects.nth(0).select_option(data.sleep_start)
+            select = selects.nth(0)
+            await select.select_option(data.sleep_start)
             await self.page.wait_for_timeout(1000)
         if data.sleep_end:
-            await selects.nth(1).select_option(data.sleep_end)
+            select = selects.nth(1)
+            await select.select_option(data.sleep_end)
             await self.page.wait_for_timeout(1000)
 
     async def _fill_temperature(self, data: CodmonData) -> None:
@@ -213,9 +234,20 @@ class CodmonClient:
         ).filter(has=self.page.locator(Locators.TEMP_ICON))
         selects = temp_section.locator(Locators.SELECT)
 
-        await selects.nth(0).select_option(data.temperature)
+        # Check if the first select is visible and enabled (form is editable)
+        first_select = selects.nth(0)
+        is_visible = await first_select.is_visible()
+        is_enabled = await first_select.is_enabled()
+        if not is_visible or not is_enabled:
+            logger.info("Temperature section not editable, skipping")
+            return
+
+        select = selects.nth(0)
+        await select.select_option(data.temperature)
         await self.page.wait_for_timeout(1000)
-        await selects.nth(1).select_option(data.temperature_time)
+
+        select = selects.nth(1)
+        await select.select_option(data.temperature_time)
         await self.page.wait_for_timeout(1000)
 
     async def fill_evening_meal(self, value: str) -> None:

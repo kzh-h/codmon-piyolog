@@ -160,11 +160,6 @@ async def main() -> None:
             args=browser_config.launch_args,
         )
         context = await browser.new_context(**browser_config.context_options)
-        await context.tracing.start(
-            screenshots=True,
-            snapshots=True,
-            sources=True,
-        )
 
         try:
             page = await context.new_page()
@@ -178,6 +173,12 @@ async def main() -> None:
             logger.info("Logging into Codmon...")
             await codmon.login()
             logger.info("Login successful")
+
+            await context.tracing.start(
+                screenshots=True,
+                snapshots=True,
+                sources=True,
+            )
 
             logger.info("Fetching meals from Codmon...")
             meals = await codmon.get_meals()
