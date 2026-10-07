@@ -1,12 +1,19 @@
 # src/codmon.py
 
 import logging
+import re
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
+from typing import Protocol
+from urllib.parse import urlparse
 
 from playwright.async_api import Locator as PlaywrightLocator
-from playwright.async_api import Page
+from playwright.async_api import Page, Response
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.models import CodmonData
+from src.utils import get_jst_date
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +22,28 @@ logger = logging.getLogger(__name__)
 class MealData:
     evening: str
     morning: str
+
+
+@dataclass
+class SaveResult:
+    verified: bool
+    status: int | None = None
+    url: str | None = None
+
+
+class DiagnosticsHook(Protocol):
+    async def checkpoint(self, name: str) -> None: ...
+
+    def untraced(self, label: str) -> AbstractAsyncContextManager[None]: ...
+
+
+class NullDiagnostics:
+    async def checkpoint(self, name: str) -> None:
+        pass
+
+    @asynccontextmanager
+    async def untraced(self, label: str) -> AsyncIterator[None]:  # noqa: ARG002
+        yield
 
 
 class Locators:
@@ -48,12 +77,14 @@ class CodmonClient:
         password: str = "",
         headless: bool = False,
         pre_authenticated: bool = False,
+        diagnostics: DiagnosticsHook | None = None,
     ):
         self.page = page
         self.email = email
         self.password = password
         self.headless = headless
         self._logged_in = pre_authenticated
+        self._diag: DiagnosticsHook = diagnostics or NullDiagnostics()
 
     async def login(self) -> None:
         await self.page.goto("https://parents.codmon.com/home")
@@ -84,27 +115,30 @@ class CodmonClient:
             self.email
         )
         await self.page.wait_for_timeout(1000)
-        await self.page.get_by_role("textbox", name="パスワード").fill(
-            self.password
-        )
-        await self.page.wait_for_timeout(1000)
-        await self.page.get_by_text("ログインする").click()
-        await self.page.wait_for_load_state("networkidle")
-        await self.page.wait_for_timeout(1000)
+        # DOMスナップショットにパスワードが残るため、入力からログイン完了
+        # までをトレース対象外にする
+        async with self._diag.untraced("password"):
+            await self.page.get_by_role("textbox", name="パスワード").fill(
+                self.password
+            )
+            await self.page.wait_for_timeout(1000)
+            await self.page.get_by_text("ログインする").click()
+            await self.page.wait_for_load_state("networkidle")
+            await self.page.wait_for_timeout(1000)
 
-        # Retry login up to 3 times if still on login page
-        max_retries = 3
-        for attempt in range(max_retries):
-            login_button = self.page.get_by_text("ログインする")
-            if await login_button.count() == 0:
-                break
-            if attempt < max_retries - 1:
-                await self.page.wait_for_timeout(3000)
-                await login_button.click()
-                await self.page.wait_for_load_state("networkidle")
-                await self.page.wait_for_timeout(1000)
-        else:
-            raise RuntimeError("Login failed after 3 retries")
+            # Retry login up to 3 times if still on login page
+            max_retries = 3
+            for attempt in range(max_retries):
+                login_button = self.page.get_by_text("ログインする")
+                if await login_button.count() == 0:
+                    break
+                if attempt < max_retries - 1:
+                    await self.page.wait_for_timeout(3000)
+                    await login_button.click()
+                    await self.page.wait_for_load_state("networkidle")
+                    await self.page.wait_for_timeout(1000)
+            else:
+                raise RuntimeError("Login failed after 3 retries")
 
         # Wait 2 seconds for page transition, then click contact button
         await self.page.wait_for_timeout(2000)
@@ -113,6 +147,24 @@ class CodmonClient:
         await self.page.wait_for_timeout(1000)
 
         self._logged_in = True
+        await self._log_visible_date()
+
+    async def _log_visible_date(self) -> None:
+        """画面上の日付表示とJST日付を比較してログに出す (best effort)。"""
+        try:
+            text = await self.page.locator(Locators.PREV_DAY).first.evaluate(
+                "el => el.parentElement.textContent", timeout=3000
+            )
+            visible = re.sub(r"\s+", " ", text or "").strip()
+            today = get_jst_date()
+            logger.info(f"Visible date text: '{visible}' (JST today={today})")
+            if f"{today.month}月{today.day}日" not in visible.replace(" ", ""):
+                logger.warning(
+                    "Visible date text may not match JST today; "
+                    "the notebook of another day might be open"
+                )
+        except Exception as e:
+            logger.info(f"Could not read visible date: {e}")
 
     def _ensure_logged_in(self) -> None:
         if not self._logged_in:
@@ -138,25 +190,56 @@ class CodmonClient:
         morning = await textareas.nth(1).input_value()
         return MealData(evening=evening, morning=morning)
 
+    async def get_committed_meals(self) -> MealData:
+        # value属性 = Vueのstateの反映 (DOMプロパティではない)
+        self._ensure_logged_in()
+        textareas = self._get_meal_section().locator(Locators.MEAL_TEXTAREA)
+        evening = await textareas.nth(0).get_attribute("value")
+        morning = await textareas.nth(1).get_attribute("value")
+        return MealData(evening=evening or "", morning=morning or "")
+
+    async def _fill_meal_textarea(self, index: int, value: str) -> None:
+        textarea = self._get_meal_section().locator(Locators.MEAL_TEXTAREA)
+        textarea = textarea.nth(index)
+        await textarea.scroll_into_view_if_needed()
+        await textarea.fill(value)
+        # fill()はinputのみ発火。Vueはchange/blurでstateに反映するため必要
+        await textarea.dispatch_event("change")
+        await textarea.blur()
+        await self.page.wait_for_timeout(500)
+        committed = await textarea.get_attribute("value")
+        if committed != value:
+            await textarea.click()
+            await textarea.press("Tab")
+            await self.page.wait_for_timeout(500)
+            committed = await textarea.get_attribute("value")
+        if committed != value:
+            logger.warning(
+                f"Meal textarea {index} not committed: "
+                f"value attribute={committed!r}"
+            )
+            await self._diag.checkpoint(f"meal-{index}-not-committed")
+        await self.page.wait_for_timeout(1000)
+
     async def set_evening_meal(self, value: str) -> None:
         self._ensure_logged_in()
-        meal_section = self._get_meal_section()
-        await meal_section.locator(Locators.MEAL_TEXTAREA).nth(0).fill(value)
-        await self.page.wait_for_timeout(1000)
+        await self._fill_meal_textarea(0, value)
 
     async def set_morning_meal(self, value: str) -> None:
         self._ensure_logged_in()
-        meal_section = self._get_meal_section()
-        await meal_section.locator(Locators.MEAL_TEXTAREA).nth(1).fill(value)
-        await self.page.wait_for_timeout(1000)
+        await self._fill_meal_textarea(1, value)
 
     async def fill_morning_form(self, data: CodmonData) -> None:
         self._ensure_logged_in()
 
         await self._fill_mood(data)
+        await self._diag.checkpoint("filled-mood")
         await self._fill_poop(data)
+        await self._diag.checkpoint("filled-poop")
         await self._fill_sleep(data)
+        await self._diag.checkpoint("filled-sleep")
         await self._fill_temperature(data)
+        await self._diag.checkpoint("filled-temperature")
 
     async def _fill_mood(self, _data: CodmonData) -> None:
         mood_section = self.page.locator("section").filter(
@@ -252,9 +335,7 @@ class CodmonClient:
 
     async def fill_evening_meal(self, value: str) -> None:
         self._ensure_logged_in()
-        meal_section = self._get_meal_section()
-        await meal_section.locator(Locators.MEAL_TEXTAREA).nth(0).fill(value)
-        await self.page.wait_for_timeout(1000)
+        await self._fill_meal_textarea(0, value)
 
     async def _scroll_and_click(self, locator: PlaywrightLocator) -> None:
         js_click = """el => {
@@ -289,17 +370,66 @@ class CodmonClient:
         except Exception:
             pass
 
-    async def save_draft(self) -> None:
+    async def save_draft(self) -> SaveResult:
         self._ensure_logged_in()
-        draft_btn = self.page.get_by_text("下書き保存")
-        if await draft_btn.count() > 0:
-            await self._scroll_and_click(draft_btn)
-        else:
-            await draft_btn.click()
+        draft_btn = self.page.get_by_role("button", name="下書き保存")
+        if await draft_btn.count() == 0:
+            draft_btn = self.page.get_by_text("下書き保存")
+        draft_btn = draft_btn.first
+        await draft_btn.scroll_into_view_if_needed()
+        await draft_btn.wait_for(state="visible")
+        for _ in range(20):
+            if await draft_btn.is_enabled():
+                break
+            await self.page.wait_for_timeout(500)
+
+        clicked = False
+        response: Response | None = None
+        try:
+            async with self.page.expect_response(
+                _is_codmon_write, timeout=10_000
+            ) as response_info:
+                await draft_btn.click()
+                clicked = True
+            response = await response_info.value
+        except PlaywrightTimeoutError:
+            if not clicked:
+                raise
+
         await self.page.wait_for_load_state("networkidle")
         await self.page.wait_for_timeout(1000)
+
+        if response is None:
+            logger.warning(
+                "Draft save could not be verified: no non-GET response "
+                "from codmon within 10s after clicking the save button"
+            )
+            await self._diag.checkpoint("save-unverified")
+            return SaveResult(verified=False)
+
+        method = response.request.method
+        logger.info(
+            f"Draft save response: {method} {response.url} "
+            f"-> {response.status}"
+        )
+        if response.status >= 400:
+            logger.warning(
+                "Draft save could not be verified: "
+                f"status={response.status} url={response.url}"
+            )
+            await self._diag.checkpoint("save-unverified")
+        return SaveResult(
+            verified=response.status < 400,
+            status=response.status,
+            url=response.url,
+        )
 
     def _get_meal_section(self) -> PlaywrightLocator:
         return self.page.locator("section.block__white--padding").filter(
             has=self.page.locator(Locators.MEAL_ICON)
         )
+
+
+def _is_codmon_write(response: Response) -> bool:
+    host = urlparse(response.url).hostname or ""
+    return response.request.method != "GET" and host.endswith("codmon.com")

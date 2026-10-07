@@ -15,3 +15,4 @@ ref
 .opencode
 .pip
 .mypy_cache
+tmp

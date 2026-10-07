@@ -98,48 +98,65 @@ def test_get_browser_config_local_headed() -> None:
         assert config.pattern_name == "local_headed"
         assert config.headless is False
         assert "--ozone-platform=wayland" in config.launch_args
-        assert config.context_options == {}
-
-
-def test_get_browser_config_local_headless() -> None:
-    from src.main_morning import get_browser_config
-
-    with patch.dict("os.environ", {"HEADLESS": "true"}, clear=True):
-        config = get_browser_config()
-        assert config.pattern_name == "local_headless"
-        assert config.headless is True
-        assert config.launch_args == [
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-features=IsolateOrigins,site-per-process",
-            "--headless=new",
-        ]
         assert config.context_options == {
-            "viewport": {"width": 1280, "height": 1080},
-            "user_agent": (
-                "Mozilla/5.0 (X11; Linux x86_64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+            "locale": "ja-JP",
+            "timezone_id": "Asia/Tokyo",
         }
 
 
-def test_get_browser_config_gcp_headless() -> None:
+def test_get_browser_config_headless_is_same_for_local_and_gcp() -> None:
     from src.main_morning import get_browser_config
 
+    with patch.dict("os.environ", {"HEADLESS": "true"}, clear=True):
+        local = get_browser_config()
     with patch.dict(
         "os.environ",
         {"CLOUD_RUN_JOB": "codmon-piyolog", "HEADLESS": "true"},
         clear=True,
     ):
-        config = get_browser_config()
-        assert config.pattern_name == "gcp_headless"
-        assert config.headless is True
-        assert "--no-sandbox" in config.launch_args
-        assert "--disable-dev-shm-usage" in config.launch_args
-        assert "--disable-gpu" in config.launch_args
-        assert config.context_options == {
-            "viewport": {"width": 1280, "height": 1080}
+        gcp = get_browser_config()
+
+    assert local.pattern_name == "local_headless"
+    assert gcp.pattern_name == "gcp_headless"
+    assert local.headless is gcp.headless is True
+    assert (
+        local.launch_args
+        == gcp.launch_args
+        == [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-blink-features=AutomationControlled",
+        ]
+    )
+    assert (
+        local.context_options
+        == gcp.context_options
+        == {
+            "locale": "ja-JP",
+            "timezone_id": "Asia/Tokyo",
+            "viewport": {"width": 1280, "height": 1080},
         }
+    )
+
+
+def test_build_user_agent_uses_browser_version() -> None:
+    from src.main_morning import build_user_agent
+
+    ua = build_user_agent("141.0.7390.37")
+    assert "Chrome/141.0.0.0" in ua
+    assert "Headless" not in ua
+    assert "X11; Linux x86_64" in ua
+
+
+def test_build_context_options_ua_only_for_headless() -> None:
+    from src.main_morning import build_context_options, get_browser_config
+
+    with patch.dict("os.environ", {"HEADLESS": "true"}, clear=True):
+        headless = build_context_options(get_browser_config(), "141.0.1.2")
+    assert "Chrome/141.0.0.0" in headless["user_agent"]
+    assert headless["locale"] == "ja-JP"
+
+    with patch.dict("os.environ", {}, clear=True):
+        headed = build_context_options(get_browser_config(), "141.0.1.2")
+    assert "user_agent" not in headed

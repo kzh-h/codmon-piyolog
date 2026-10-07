@@ -68,7 +68,7 @@ Artifact Registry ──> Cloud Run Jobs を更新
 
 | サービス                             | 用途 / 設定                                                                                 |
 | -------------------------------- | --------------------------------------------------------------------------------------- |
-| **Cloud Run Jobs**               | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 1 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
+| **Cloud Run Jobs**               | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 2 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
 | **Cloud Scheduler**              | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `30 7 * * 1-5` (JST)                          |
 | **Cloud Build**                  | Dockerビルド &amp; Jobデプロイ（`cloudbuild.yaml`）                                              |
 | **Artifact Registry**            | コンテナイメージ保存（`codmon-piyolog`）                                                            |
@@ -137,16 +137,16 @@ HEADLESS=false
 # パターン1: ローカル開発 (ブラウザ画面を表示して実行)
 HEADLESS=false uv run python -m src.main_morning
 
-# パターン2: ローカル開発 (ヘッドレスで実行・GCPと同じviewportで検証)
+# パターン2: ローカル開発 (ヘッドレスで実行・GCPと同一設定で再現)
 HEADLESS=true uv run python -m src.main_morning
 
 # パターン3: GCP本番環境 (Cloud Run Jobs / Dockerコンテナ内で自動実行)
-# ※ K_SERVICE, CLOUD_RUN_JOB, または ENVIRONMENT=gcp を検知してコンテナ用引数(--no-sandbox等)で動作
+# ※ K_SERVICE, CLOUD_RUN_JOB, または ENVIRONMENT=gcp を検知して動作
 ```
 
+- **共通**: ブラウザコンテキストは `locale=ja-JP` / `timezone_id=Asia/Tokyo`（JST）で起動します。実行は 07:30 JST = 22:30 UTC（前日）のため、コンテナのUTC時刻に引きずられて前日の連絡帳が開かれることを防ぎます。DockerfileでもコンテナのTZを `Asia/Tokyo` にしています。
 - **ローカル (HEADLESS=false)**: Wayland環境向け引数でブラウザGUIを表示して実行
-- **ローカル (HEADLESS=true)**: ヘッドレスで実行（GCPと同じ1280x1080解像度で動作確認・原因切り分けが可能）
-- **GCP本番 (HEADLESS=true)**: Cloud Run Jobs / コンテナ向け引数（`--no-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`）および1280x1080解像度で実行
+- **ローカル (HEADLESS=true) / GCP本番**: 完全に同じヘッドレス設定です（`--no-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`, `--disable-blink-features=AutomationControlled`、viewport 1280x1080）。User-Agentは起動したChromiumの実バージョンから `HeadlessChrome` を含まない形で生成して設定します。`pattern_name`（`local_headless` / `gcp_headless`）はログ表示用の違いのみです。
 
 ### 4. テスト
 
@@ -157,6 +157,83 @@ uv run pytest tests/
 # E2Eテスト (実際の認証情報が必要なためローカルのみで実行)
 CODMON_EMAIL=xxx CODMON_PASSWORD=xxx PIYOLOG_FEED_URL=xxx uv run pytest tests/e2e/ -v
 ```
+
+---
+
+## デバッグ・原因調査
+
+実行ごとに成果物ディレクトリ `<base>/runs/<run_id>/` が作られます。
+
+- `run_id`: JSTの `YYYYmmdd-HHMMSS`。GCPでは末尾に `CLOUD_RUN_EXECUTION`（あれば `-task<CLOUD_RUN_TASK_INDEX>`）が付きます。
+- `<base>`: ローカルは `<リポジトリ>/tmp`（`.gitignore` 済み）、GCPは `/tmp`。環境変数 `ARTIFACTS_DIR` で変更できます。
+- 実行開始時と終了時に、成果物ディレクトリの絶対パスがログに出ます。
+
+```text
+tmp/runs/<run_id>/
+├── run.log            # 全ログ (DEBUGレベル)
+├── events.jsonl       # console / pageerror / requestfailed / 4xx-5xx / 非GETリクエスト / dialog / 画面遷移 (時刻付き)
+├── environment.json   # 実行パターン, 起動引数, ブラウザ・Playwrightバージョン, UA, timezone, 現在時刻 等 (認証情報・Feed URLは含まない)
+├── summary.json       # 成否, エラー(型/メッセージ/traceback), 各ステップ所要時間, ファイル一覧, GCS URI, 下書き保存の検証結果
+├── trace-01.zip       # Playwright trace (パスワード入力より前)
+├── trace-02.zip       # Playwright trace (ログイン完了後〜最後まで)
+└── checkpoints/       # 主要ステップごとの NN-<name>.png (全画面) / .html / .json (URLとフォーム状態)
+```
+
+### トレースの開き方
+
+```bash
+uv run playwright show-trace tmp/runs/<run_id>/trace-02.zip
+```
+
+または https://trace.playwright.dev にzipをドラッグ＆ドロップします。
+
+> **トレースが分割される理由**  
+> Playwrightのtraceはfillした値やDOMスナップショット(入力欄のvalue)にパスワードが残ってしまい、GCSへアップロードされてしまいます。そのためパスワード入力からログイン完了までの間はトレースを一旦止め（`trace-01.zip` を出力）、完了後に再開します（以降が `trace-02.zip`）。既にログイン済みでパスワード入力が無い場合は `trace-01.zip` のみです。ログイン直前〜直後の様子は `checkpoints/` と `events.jsonl` で確認してください。
+
+### GCSへのアップロード
+
+- `GCS_TRACE_BUCKET` を設定すると、実行終了時（成功・失敗とも）に成果物ディレクトリ全体を `gs://<bucket>/runs/<run_id>/` 以下へアップロードします。未設定の場合はスキップします（ローカルでは通常未設定）。
+- アップロード先のgs://プレフィックスとCloud ConsoleのURLがログに出ます。
+- Cloud Run のサービスアカウントにバケットへの `roles/storage.objectCreator` が必要です。
+- ライフサイクルルールの例（30日で削除）:
+
+```bash
+cat > lifecycle.json <<'EOF2'
+{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 30}}]}
+EOF2
+gcloud storage buckets update gs://<bucket> --lifecycle-file=lifecycle.json
+```
+
+### GCSからダウンロードして調べる
+
+```bash
+gcloud storage cp -r gs://<bucket>/runs/<run_id> ./tmp/runs/
+uv run playwright show-trace tmp/runs/<run_id>/trace-02.zip
+```
+
+### Cloud Logging での検索
+
+GCPではログが1行JSON（`severity`, `message`, `run_id`, `logger`）で出力されます。`run_id` はGCSのパス名と同じです。
+
+```text
+resource.type="cloud_run_job"
+jsonPayload.run_id="<run_id>"
+```
+
+### GCPの挙動をローカルで再現する
+
+```bash
+HEADLESS=true uv run python -m src.main_morning
+```
+
+起動引数・viewport・locale/timezone・UAの組み立てがGCPと同一です（実行環境のTZ差を確認したい場合は `TZ=UTC HEADLESS=true ...` で試せます）。成果物は `tmp/runs/<run_id>/` に出力されます。
+
+### 関連する環境変数
+
+| 変数 | 内容 |
+| --- | --- |
+| `ARTIFACTS_DIR` | 成果物のベースディレクトリ（デフォルト: ローカル `<リポジトリ>/tmp`, GCP `/tmp`） |
+| `GCS_TRACE_BUCKET` | 設定時のみ成果物を `gs://<bucket>/runs/<run_id>/` へアップロード |
 
 ---
 

@@ -15,7 +15,7 @@ steps:
       - '--region'
       - '${_REGION}'
       - '--memory'
-      - '1Gi'
+      - '2Gi'
       - '--cpu'
       - '1'
       - '--task-timeout'
