@@ -196,6 +196,7 @@ class RunDiagnostics:
         self._checkpoint_n = 0
         self._trace_n = 0
         self._tracing = False
+        self._trace_paths: list[Path] = []
         self._request_started: dict[Request, float] = {}
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._events_path = run_dir / "events.jsonl"
@@ -234,7 +235,9 @@ class RunDiagnostics:
 
     def _next_trace_path(self) -> Path:
         self._trace_n += 1
-        return self.run_dir / f"trace-{self._trace_n:02d}.zip"
+        path = self.run_dir / f"trace-{self._trace_n:02d}.zip"
+        self._trace_paths.append(path)
+        return path
 
     @asynccontextmanager
     async def untraced(self, label: str) -> AsyncIterator[None]:
@@ -257,14 +260,22 @@ class RunDiagnostics:
                     self._tracing = False
                     logger.warning(f"Failed to resume tracing: {e}")
 
-    async def stop_tracing(self) -> None:
+    async def stop_tracing(self, keep: bool) -> None:
+        """keep=False ではトレースを破棄し、書き出し済みチャンクも削除する。"""
         if not self._tracing or self.context is None:
             return
         self._tracing = False
         try:
-            path = self._next_trace_path()
-            await self.context.tracing.stop(path=path)
-            logger.info(f"Trace saved: {path}")
+            if keep:
+                path = self._next_trace_path()
+                await self.context.tracing.stop(path=path)
+                logger.info(f"Trace saved: {path}")
+            else:
+                await self.context.tracing.stop()
+                for chunk in self._trace_paths:
+                    chunk.unlink(missing_ok=True)
+                self._trace_paths.clear()
+                logger.info("Trace discarded (run succeeded)")
         except Exception as e:
             logger.warning(f"Failed to stop tracing: {e}")
 

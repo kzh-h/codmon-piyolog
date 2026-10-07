@@ -271,6 +271,7 @@ async def main() -> None:
                 headless=browser_config.headless,
                 args=browser_config.launch_args,
             )
+            failed = False
             try:
                 context_options = build_context_options(
                     browser_config, browser.version
@@ -299,10 +300,12 @@ async def main() -> None:
 
                 save_result = await fill_codmon(codmon, diag, gas_client, data)
             except Exception:
+                failed = True
                 await diag.checkpoint("error")
                 raise
             finally:
-                await diag.stop_tracing()
+                keep_trace = os.environ.get("KEEP_TRACE", "").lower() == "true"
+                await diag.stop_tracing(keep=failed or keep_trace)
                 await browser.close()
                 logger.info("Browser closed")
     except Exception as e:

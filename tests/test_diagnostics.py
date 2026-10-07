@@ -93,8 +93,8 @@ async def test_tracing_is_split_around_untraced(tmp_path: Path) -> None:
     await diag.start_tracing(context, "title")
     async with diag.untraced("password"):
         pass
-    await diag.stop_tracing()
-    await diag.stop_tracing()  # 2回目は何もしない
+    await diag.stop_tracing(keep=True)
+    await diag.stop_tracing(keep=True)  # 2回目は何もしない
 
     context.tracing.stop_chunk.assert_awaited_once_with(
         path=tmp_path / "trace-01.zip"
@@ -103,6 +103,43 @@ async def test_tracing_is_split_around_untraced(tmp_path: Path) -> None:
     context.tracing.stop.assert_awaited_once_with(
         path=tmp_path / "trace-02.zip"
     )
+
+
+@pytest.mark.asyncio
+async def test_stop_tracing_discard_removes_chunks(tmp_path: Path) -> None:
+    diag = RunDiagnostics("rid", tmp_path, None)
+    context = make_context()
+    chunk = tmp_path / "trace-01.zip"
+
+    async def write_chunk(path: Path) -> None:
+        path.write_bytes(b"zip")
+
+    context.tracing.stop_chunk.side_effect = write_chunk
+    await diag.start_tracing(context, "title")
+    async with diag.untraced("password"):
+        assert chunk.exists()
+    await diag.stop_tracing(keep=False)
+
+    context.tracing.stop.assert_awaited_once_with()
+    assert not chunk.exists()
+
+
+@pytest.mark.asyncio
+async def test_stop_tracing_keep_saves_file(tmp_path: Path) -> None:
+    diag = RunDiagnostics("rid", tmp_path, None)
+    context = make_context()
+
+    async def write_trace(path: Path) -> None:
+        path.write_bytes(b"zip")
+
+    context.tracing.stop.side_effect = write_trace
+    await diag.start_tracing(context, "title")
+    await diag.stop_tracing(keep=True)
+
+    context.tracing.stop.assert_awaited_once_with(
+        path=tmp_path / "trace-01.zip"
+    )
+    assert (tmp_path / "trace-01.zip").exists()
 
 
 @pytest.mark.asyncio
@@ -122,7 +159,7 @@ async def test_diagnostics_never_raises(tmp_path: Path) -> None:
     context = make_context()
     context.tracing.stop.side_effect = RuntimeError("not started")
     await diag.start_tracing(context, "t")
-    await diag.stop_tracing()
+    await diag.stop_tracing(keep=True)
 
     page = make_page()
     page.screenshot.side_effect = RuntimeError("closed")

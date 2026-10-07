@@ -174,10 +174,13 @@ tmp/runs/<run_id>/
 ├── events.jsonl       # console / pageerror / requestfailed / 4xx-5xx / 非GETリクエスト / dialog / 画面遷移 (時刻付き)
 ├── environment.json   # 実行パターン, 起動引数, ブラウザ・Playwrightバージョン, UA, timezone, 現在時刻 等 (認証情報・Feed URLは含まない)
 ├── summary.json       # 成否, エラー(型/メッセージ/traceback), 各ステップ所要時間, ファイル一覧, GCS URI, 下書き保存の検証結果
-├── trace-01.zip       # Playwright trace (パスワード入力より前)
-├── trace-02.zip       # Playwright trace (ログイン完了後〜最後まで)
+├── trace-01.zip       # (失敗時のみ) Playwright trace (パスワード入力より前)
+├── trace-02.zip       # (失敗時のみ) Playwright trace (ログイン完了後〜最後まで)
 └── checkpoints/       # 主要ステップごとの NN-<name>.png (全画面) / .html / .json (URLとフォーム状態)
 ```
+
+> **traceは失敗時のみ出力されます**  
+> 成功した実行では `trace-NN.zip` は破棄され、成果物ディレクトリ・`summary.json` のファイル一覧・GCSのいずれにも残りません（checkpoints / events.jsonl / environment.json / summary.json / run.log は成功時も出力）。ローカルデバッグ等で成功時にも残したい場合は環境変数 `KEEP_TRACE=true` を設定してください。
 
 ### トレースの開き方
 
