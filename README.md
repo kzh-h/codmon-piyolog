@@ -4,7 +4,7 @@
 
 ## 概要
 
-毎朝（平日 07:30 JST）、以下の処理を自動で行います。
+毎朝（平日 07:45 JST）、以下の処理を自動で行います。
 
 1. **ぴよログ Feed**: 当日の育児記録を取得
 2. **GAS API**: スプレッドシートから前日の夕食データを取得
@@ -20,7 +20,7 @@
 ### 1. 定期実行フロー（本番処理）
 
 ```text
-Cloud Scheduler (平日 07:30 JST)
+Cloud Scheduler (平日 07:45 JST)
     │
     ▼
 Cloud Run Jobs (codmon-piyolog)
@@ -69,7 +69,7 @@ Artifact Registry ──> Cloud Run Jobs を更新
 | サービス                             | 用途 / 設定                                                                                 |
 | -------------------------------- | --------------------------------------------------------------------------------------- |
 | **Cloud Run Jobs**               | バッチ処理本体（`codmon-piyolog`）<br>1 CPU / 2 GiB / Timeout 300s / Retries 0 / `HEADLESS=true` |
-| **Cloud Scheduler**              | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `30 7 * * 1-5` (JST)                          |
+| **Cloud Scheduler**              | 定期実行（`codmon-piyolog-morning`）<br>スケジュール: `45 7 * * 1-5` (JST)                          |
 | **Cloud Build**                  | Dockerビルド &amp; Jobデプロイ（`cloudbuild.yaml`）                                              |
 | **Artifact Registry**            | コンテナイメージ保存（`codmon-piyolog`）                                                            |
 | **Secret Manager**               | 実行時環境変数の管理                                                                              |
@@ -144,7 +144,7 @@ HEADLESS=true uv run python -m src.main_morning
 # ※ K_SERVICE, CLOUD_RUN_JOB, または ENVIRONMENT=gcp を検知して動作
 ```
 
-- **共通**: ブラウザコンテキストは `locale=ja-JP` / `timezone_id=Asia/Tokyo`（JST）で起動します。実行は 07:30 JST = 22:30 UTC（前日）のため、コンテナのUTC時刻に引きずられて前日の連絡帳が開かれることを防ぎます。DockerfileでもコンテナのTZを `Asia/Tokyo` にしています。
+- **共通**: ブラウザコンテキストは `locale=ja-JP` / `timezone_id=Asia/Tokyo`（JST）で起動します。実行は 07:45 JST = 22:45 UTC（前日）のため、コンテナのUTC時刻に引きずられて前日の連絡帳が開かれることを防ぎます。DockerfileでもコンテナのTZを `Asia/Tokyo` にしています。
 - **ローカル (HEADLESS=false)**: Wayland環境向け引数でブラウザGUIを表示して実行
 - **ローカル (HEADLESS=true) / GCP本番**: 完全に同じヘッドレス設定です（`--no-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`, `--disable-blink-features=AutomationControlled`、viewport 1280x1080）。User-Agentは起動したChromiumの実バージョンから `HeadlessChrome` を含まない形で生成して設定します。`pattern_name`（`local_headless` / `gcp_headless`）はログ表示用の違いのみです。
 
