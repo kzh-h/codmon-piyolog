@@ -7,6 +7,10 @@ from .models import CodmonData
 from .utils import get_jst_date, round_to_15min, to_jst
 
 
+def is_until_0830(dt: datetime) -> bool:
+    return dt.hour < 8 or (dt.hour == 8 and dt.minute <= 30)
+
+
 class PiyologClient:
     def __init__(self, feed_url: str):
         self.feed_url = feed_url
@@ -35,15 +39,17 @@ class PiyologClient:
         sleep_start_dt: datetime | None = None
         sleep_end_dt: datetime | None = None
         latest_temp = None
+        latest_temp_dt: datetime | None = None
 
         for record in records:
             dt = to_jst(record["datetime"])
             t = record["type"]
 
             if t == "Poop":
-                if 16 <= dt.hour <= 23:
+                # 夕方: 前日 16:00-23:59 / 朝: 当日 0:00-8:30
+                if dt.date() == previous_day and 16 <= dt.hour <= 23:
                     poop_evening += 1
-                elif dt.hour < 7 or (dt.hour == 7 and dt.minute <= 30):
+                elif dt.date() == current_day and is_until_0830(dt):
                     poop_morning += 1
 
             elif t == "Sleep":
@@ -57,13 +63,20 @@ class PiyologClient:
             elif t == "WakeUp":
                 if (
                     dt.date() == current_day
-                    and (dt.hour < 7 or (dt.hour == 7 and dt.minute <= 30))
+                    and is_until_0830(dt)
                     and (sleep_end_dt is None or dt < sleep_end_dt)
                 ):
                     sleep_end_dt = dt
 
-            elif t == "Temperature":
+            # 体温: 当日 0:00-8:30 のうち最も遅い時刻の記録を採用
+            elif (
+                t == "Temperature"
+                and dt.date() == current_day
+                and is_until_0830(dt)
+                and (latest_temp_dt is None or dt > latest_temp_dt)
+            ):
                 latest_temp = record
+                latest_temp_dt = dt
 
         sleep_start = (
             round_to_15min(sleep_start_dt) if sleep_start_dt else None
